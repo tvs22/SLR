@@ -13,15 +13,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
-});
-
-Auth::routes();
-
-Route::get('/home', 'App\Http\Controllers\HomeController@index')->name('home');
-
-Route::get('/todo', 'App\Http\Controllers\TodoController@fetchTodo');
+Route::get('/', 'App\Http\Controllers\TodoController@fetchTodo');
 
 Route::post('/scheduler/toggle', 'App\Http\Controllers\TodoController@toggleScheduler');
 
