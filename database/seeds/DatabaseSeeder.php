@@ -1,5 +1,7 @@
 <?php
 
+use Database\Seeders\BatterySettingsSeeder;
+use Database\Seeders\BatteryTransactionsSeeder;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -11,6 +13,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run()
     {
-        // $this->call(UsersTableSeeder::class);
+        $this->call(BatterySettingsSeeder::class);
+        $this->call(BatteryTransactionsSeeder::class);
     }
 }
