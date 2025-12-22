@@ -38,38 +38,24 @@ class TodoController extends Controller
             'enable' => 'required|boolean',
         ]);
 
-        // 1. Get current scheduler config
         $schedulerData = $this->getFoxEssScheduler();
 
-        if (!$schedulerData || !isset($schedulerData['result']['groups']) || empty($schedulerData['result']['groups'][0])) {
+        if (!$schedulerData || !isset($schedulerData['result']['groups'])) {
             return response()->json(['message' => 'Could not retrieve scheduler policies to update.'], 500);
         }
 
-        // 2. Transform the 'groups' from the GET response to the 'policies' format for the SET request
-        $originalPolicies = $schedulerData['result']['groups'][0];
-        $policiesToSet = [];
-        foreach ($originalPolicies as $policy) {
-            $policiesToSet[] = [
-                'enable' => (bool)$policy['enable'],
-                'time' => sprintf('%02d:%02d-%02d:%02d', $policy['startHour'], $policy['startMinute'], $policy['endHour'], $policy['endMinute']),
-                'mode' => $policy['workMode'],
-                'power' => $policy['extraParam']['chargePower'] ?? 3000, // Default if not present
-                'value' => $policy['extraParam']['value'] ?? 100,        // Default if not present
-                'type' => 'soc'
-            ];
+        $groups = $schedulerData['result']['groups'];
+
+        if (empty($groups[0][0])) {
+             return response()->json(['message' => 'No policies found to update.'], 500);
         }
 
-        // 3. Toggle the 'enable' value for the first policy
-        if (!empty($policiesToSet)) {
-            $policiesToSet[0]['enable'] = $validatedData['enable'];
-        } else {
-            return response()->json(['message' => 'No policies to update.'], 500);
-        }
+        // Update the enable flag on the first policy of the first group (0 for disable, 1 for enable)
+        $groups[0][0]['enable'] = $validatedData['enable'] ? 1 : 0;
 
-        // 4. Call the 'set' function with the modified policies
         $response = $this->setFoxEssScheduler(
             $validatedData['deviceSN'],
-            $policiesToSet
+            $groups
         );
 
         if ($response && isset($response['errno']) && $response['errno'] === 0) {
@@ -158,10 +144,10 @@ class TodoController extends Controller
      * Sets the scheduler policies for a FoxESS device.
      *
      * @param string $deviceSN
-     * @param array $policies
+     * @param array $groups
      * @return array|null
      */
-    private function setFoxEssScheduler(string $deviceSN, array $policies): ?array
+    private function setFoxEssScheduler(string $deviceSN, array $groups): ?array
     {
         $foxApiKey = env('FOX_ESS_API_KEY');
         if (!$foxApiKey || !$deviceSN) {
@@ -170,7 +156,7 @@ class TodoController extends Controller
 
         try {
             $path = '/op/v2/device/scheduler/set';
-            $body = json_encode(['deviceSN' => $deviceSN, 'policies' => $policies]);
+            $body = json_encode(['deviceSN' => $deviceSN, 'groups' => $groups]);
             $headers = $this->getFoxEssSignature($foxApiKey, $path, $body);
 
             $response = Http::withHeaders($headers)
