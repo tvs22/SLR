@@ -39,27 +39,25 @@ class TodoController extends Controller
         ]);
 
         $schedulerData = $this->getFoxEssScheduler();
-
-        if (!$schedulerData || !isset($schedulerData['result']['groups'])) {
+           if (!$schedulerData || !isset($schedulerData['result']['groups'])) {
             return response()->json(['message' => 'Could not retrieve scheduler policies to update.'], 500);
         }
 
         $groups = $schedulerData['result']['groups'];
 
-        if (empty($groups[0][0])) {
+        if (empty($groups[0])) {
              return response()->json(['message' => 'No policies found to update.'], 500);
         }
 
         // Update the enable flag on the first policy of the first group (0 for disable, 1 for enable)
-        $groups[0][0]['enable'] = $validatedData['enable'] ? 1 : 0;
+        $groups[0]['enable'] = $validatedData['enable'] ? 1 : 0;
 
         $response = $this->setFoxEssScheduler(
-            $validatedData['deviceSN'],
             $groups
         );
 
         if ($response && isset($response['errno']) && $response['errno'] === 0) {
-            return response()->json(['message' => 'Scheduler updated successfully.']);
+           return response()->json(['message' => 'Scheduler updated successfully.']);
         } else {
             $errorMessage = $response['msg'] ?? 'Failed to update scheduler.';
             Log::error('Error setting FoxESS scheduler: ' . json_encode($response));
@@ -147,22 +145,22 @@ class TodoController extends Controller
      * @param array $groups
      * @return array|null
      */
-    private function setFoxEssScheduler(string $deviceSN, array $groups): ?array
+    private function setFoxEssScheduler(array $groups): ?array
     {
         $foxApiKey = env('FOX_ESS_API_KEY');
+        $deviceSN = env('FOX_ESS_DEVICE_SN');
         if (!$foxApiKey || !$deviceSN) {
             return null;
         }
 
         try {
-            $path = '/op/v2/device/scheduler/set';
+            $path = '/op/v2/device/scheduler/enable';
             $body = json_encode(['deviceSN' => $deviceSN, 'groups' => $groups]);
             $headers = $this->getFoxEssSignature($foxApiKey, $path, $body);
 
             $response = Http::withHeaders($headers)
                 ->withBody($body, 'application/json')
                 ->post('https://www.foxesscloud.com' . $path);
-
             if ($response->successful()) {
                 return $response->json();
             } else {
