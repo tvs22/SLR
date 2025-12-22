@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\BatteryTransaction;
 
 class TodoController extends Controller
 {
@@ -27,12 +28,26 @@ class TodoController extends Controller
     {
         $amberData = $this->getAmberElectricData();
         $schedulerData = $this->getFoxEssScheduler();
+        $batteryTransactions = BatteryTransaction::orderBy('created_at', 'desc')->get();
+
         return view('home', [
             'electricityPrice' => $amberData['electricityPrice'],
             'solarPrice' => $amberData['solarPrice'],
             'scheduler' => $schedulerData,
             'deviceSN' => env('FOX_ESS_DEVICE_SN'),
+            'batteryTransactions' => $batteryTransactions,
         ]);
+    }
+
+    /**
+     * Fetches the latest battery transactions.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function fetchLatestTransactions()
+    {
+        $batteryTransactions = BatteryTransaction::orderBy('created_at', 'desc')->get();
+        return response()->json($batteryTransactions);
     }
 
     /**

@@ -2,6 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\BatterySettingsController;
+use App\Http\Controllers\Web\ScheduleController;
+use App\Http\Controllers\Web\ScheduleActionController;
+use App\Http\Controllers\TodoController;
 
 /*
 |--------------------------------------------------------------------------
@@ -15,12 +18,18 @@ use App\Http\Controllers\BatterySettingsController;
 */
 
 Auth::routes();
-Route::get('/', 'App\Http\Controllers\TodoController@fetchTodo');
+Route::get('/', [TodoController::class, 'fetchTodo']);
+Route::get('/latest-transactions', [TodoController::class, 'fetchLatestTransactions']);
 
-Route::post('/scheduler/toggle', 'App\Http\Controllers\TodoController@toggleScheduler');
+Route::post('/scheduler/toggle', [TodoController::class, 'toggleScheduler']);
 
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
 
 Route::post('/submit', [App\Http\Controllers\HomeController::class, 'submit']);
 
 Route::resource('battery-settings', BatterySettingsController::class);
+
+Route::get('/schedule', ScheduleController::class);
+Route::post('/schedule/start', [ScheduleActionController::class, 'start']);
+Route::post('/schedule/stop', [ScheduleActionController::class, 'stop']);
+Route::post('/schedule/pause', [ScheduleActionController::class, 'pause']);

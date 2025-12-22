@@ -66,11 +66,19 @@
                     </form>
                 </div>
             </div>
+
+            <div class="card mt-4">
+                <div class="card-header">{{ __('Battery Transactions') }}</div>
+                <div class="card-body" id="battery-transactions">
+                    @include('partials.battery-transactions')
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
 @push('scripts')
+<script src="{{ asset('js/battery-transactions.js') }}"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function(){
         const deviceSNElement = document.getElementById('deviceSN');
