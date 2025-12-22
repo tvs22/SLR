@@ -35,9 +35,10 @@
 
                     @php
                         $policyToDisplay = null;
-                        if ($scheduler && isset($scheduler['result']['groups']) && is_array($scheduler['result']['groups'])) {
+                        if ($scheduler && isset($scheduler['result']['groups']) && is_array($scheduler['result']['groups']) && $batterySetting && $batterySetting->discharge_start_time) {
+                            $dischargeStartHour = (int) substr($batterySetting->discharge_start_time, 0, 2);
                             foreach ($scheduler['result']['groups'] as $policy) {
-                                if (isset($policy['workMode']) && $policy['workMode'] === 'ForceDischarge' && isset($policy['startHour']) && $policy['startHour'] == 14) {
+                                if (isset($policy['workMode']) && $policy['workMode'] === 'ForceDischarge' && isset($policy['startHour']) && $policy['startHour'] == $dischargeStartHour) {
                                     $policyToDisplay = $policy;
                                     break;
                                 }

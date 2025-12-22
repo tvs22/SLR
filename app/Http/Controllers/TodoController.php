@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\BatteryTransaction;
+use App\BatterySetting;
 
 class TodoController extends Controller
 {
@@ -29,6 +30,7 @@ class TodoController extends Controller
         $amberData = $this->getAmberElectricData();
         $schedulerData = $this->getFoxEssScheduler();
         $batteryTransactions = BatteryTransaction::orderBy('created_at', 'desc')->get();
+        $batterySetting = BatterySetting::latest()->first();
 
         return view('home', [
             'electricityPrice' => $amberData['electricityPrice'],
@@ -36,6 +38,7 @@ class TodoController extends Controller
             'scheduler' => $schedulerData,
             'deviceSN' => env('FOX_ESS_DEVICE_SN'),
             'batteryTransactions' => $batteryTransactions,
+            'batterySetting' => $batterySetting,
         ]);
     }
 
@@ -68,12 +71,24 @@ class TodoController extends Controller
             return response()->json(['message' => 'Could not retrieve scheduler policies to update.'], 500);
         }
 
+        // Fetch the latest battery setting to get the dynamic discharge start time
+        $batterySetting = BatterySetting::latest()->first();
+
+        // Ensure battery settings and discharge time are present
+        if (!$batterySetting || !$batterySetting->discharge_start_time) {
+            return response()->json(['message' => 'Battery discharge start time not configured.'], 404);
+        }
+
+        // Extract hour from 'discharge_start_time' (e.g., "14:00")
+        $dischargeStartHour = (int) substr($batterySetting->discharge_start_time, 0, 2);
+
         $groups = $schedulerData['result']['groups'];
         $policyIndex = -1;
 
         if (is_array($groups)) {
             foreach ($groups as $index => $policy) {
-                if (isset($policy['workMode']) && $policy['workMode'] === 'ForceDischarge' && isset($policy['startHour']) && $policy['startHour'] == 14) {
+                // Find the policy matching the dynamic start hour
+                if (isset($policy['workMode']) && $policy['workMode'] === 'ForceDischarge' && isset($policy['startHour']) && $policy['startHour'] == $dischargeStartHour) {
                     $policyIndex = $index;
                     break;
                 }
