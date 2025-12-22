@@ -35,9 +35,14 @@
 
                     <div class="mt-3">
                         <h5>Fox ESS Status</h5>
-                        <p>Force Charge: 
-
-                        </p>
+                        @if ($scheduler && $scheduler['result'] && isset($scheduler['result']['groups'][0]['enable']))
+                            <p>Force Charge: {{ $scheduler['result']['groups'][0]['enable'] ? 'Enabled' : 'Disabled' }}</p>
+                            <input type="hidden" id="deviceSN" value="{{ $deviceSN }}">
+                            <button id="enableBtn" class="btn btn-success">Enable</button>
+                            <button id="disableBtn" class="btn btn-danger">Disable</button>
+                        @else
+                            <p>Could not retrieve Fox ESS status.</p>
+                        @endif
                     </div>
 
                     <form action="/submit" method="POST" class="mt-3">
@@ -56,84 +61,39 @@
 
 @push('scripts')
 <script>
-    // Global var to hold the next refresh time
-    var nextRefreshTime;
-
-    function updateClock() {
-        var now = new Date();
-        var hours = now.getHours();
-        var minutes = now.getMinutes();
-        var seconds = now.getSeconds();
-        
-        // Add leading zeros if needed
-        hours = (hours < 10) ? "0" + hours : hours;
-        minutes = (minutes < 10) ? "0" + minutes : minutes;
-        seconds = (seconds < 10) ? "0" + seconds : seconds;
-
-        var timeString = hours + ":" + minutes + ":" + seconds;
-        document.getElementById('clock').innerHTML = timeString;
-    }
-
-    function updateCountdown() {
-        var now = new Date();
-        var remaining = nextRefreshTime.getTime() - now.getTime();
-        
-        if (remaining < 0) {
-            document.getElementById('countdown').innerHTML = "Refreshing...";
-            return;
-        }
-
-        var minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-        var seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-
-        // Add leading zeros
-        minutes = (minutes < 10) ? "0" + minutes : minutes;
-        seconds = (seconds < 10) ? "0" + seconds : seconds;
-
-        document.getElementById('countdown').innerHTML = "Refresh in: " + minutes + ":" + seconds;
-    }
-
-
-    function scheduleNextRefresh() {
-        var now = new Date();
-        var then = new Date(now.getTime());
-
-        then.setSeconds(41, 0);
-
-        var currentMinutes = now.getMinutes();
-        var nextRefreshMinuteBlock = Math.floor(currentMinutes / 5) * 5;
-        
-        var nextMinutes;
-
-        if (currentMinutes > nextRefreshMinuteBlock || 
-           (currentMinutes === nextRefreshMinuteBlock && now.getSeconds() >= 45)) {
-            nextMinutes = nextRefreshMinuteBlock + 5;
-        } else {
-            nextMinutes = nextRefreshMinuteBlock;
-        }
-
-        if (nextMinutes >= 60) {
-            then.setHours(then.getHours() + 1);
-            nextMinutes = 0;
-        }
-        
-        then.setMinutes(nextMinutes);
-        
-        nextRefreshTime = then; 
-        
-        var timeout = (nextRefreshTime.getTime() - now.getTime());
-        setTimeout(function() { window.location.reload(true); }, timeout);
-    }
-
     document.addEventListener("DOMContentLoaded", function(){
-        // Update the clock every second
-        setInterval(updateClock, 1000);
-        updateClock(); // initial call
+        const deviceSN = document.getElementById('deviceSN').value;
 
-        // Schedule the first refresh and start the countdown timer
-        scheduleNextRefresh();
-        setInterval(updateCountdown, 1000);
-        updateCountdown(); // initial call
+        document.getElementById('enableBtn').addEventListener('click', () => {
+            toggleScheduler(true);
+        });
+
+        document.getElementById('disableBtn').addEventListener('click', () => {
+            toggleScheduler(false);
+        });
+
+        function toggleScheduler(enable) {
+            fetch('/scheduler/toggle', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    deviceSN: deviceSN,
+                    enable: enable
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                window.location.reload();
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('An error occurred.');
+            });
+        }
     });
 </script>
 @endpush

@@ -23,6 +23,8 @@ Route::get('/home', 'App\Http\Controllers\HomeController@index')->name('home');
 
 Route::get('/todo', 'App\Http\Controllers\TodoController@fetchTodo');
 
+Route::post('/scheduler/toggle', 'App\Http\Controllers\TodoController@toggleScheduler');
+
 Auth::routes();
 
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');

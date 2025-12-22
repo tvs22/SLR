@@ -15,14 +15,70 @@ class TodoController extends Controller
      */
     public function fetchTodo()
     {
-        //$amberData = $this->getAmberElectricData();
+        $amberData = $this->getAmberElectricData();
         $schedulerData = $this->getFoxEssScheduler();
-        dd($schedulerData);
         return view('home', [
             'electricityPrice' => $amberData['electricityPrice'],
             'solarPrice' => $amberData['solarPrice'],
             'scheduler' => $schedulerData,
+            'deviceSN' => env('FOX_ESS_DEVICE_SN'),
         ]);
+    }
+
+    /**
+     * Toggles the first scheduler policy on or off.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function toggleScheduler(Request $request)
+    {
+        $validatedData = $request->validate([
+            'deviceSN' => 'required|string',
+            'enable' => 'required|boolean',
+        ]);
+
+        // 1. Get current scheduler config
+        $schedulerData = $this->getFoxEssScheduler();
+
+        if (!$schedulerData || !isset($schedulerData['result']['groups']) || empty($schedulerData['result']['groups'][0])) {
+            return response()->json(['message' => 'Could not retrieve scheduler policies to update.'], 500);
+        }
+
+        // 2. Transform the 'groups' from the GET response to the 'policies' format for the SET request
+        $originalPolicies = $schedulerData['result']['groups'][0];
+        $policiesToSet = [];
+        foreach ($originalPolicies as $policy) {
+            $policiesToSet[] = [
+                'enable' => (bool)$policy['enable'],
+                'time' => sprintf('%02d:%02d-%02d:%02d', $policy['startHour'], $policy['startMinute'], $policy['endHour'], $policy['endMinute']),
+                'mode' => $policy['workMode'],
+                'power' => $policy['extraParam']['chargePower'] ?? 3000, // Default if not present
+                'value' => $policy['extraParam']['value'] ?? 100,        // Default if not present
+                'type' => 'soc'
+            ];
+        }
+
+        // 3. Toggle the 'enable' value for the first policy
+        if (!empty($policiesToSet)) {
+            $policiesToSet[0]['enable'] = $validatedData['enable'];
+        } else {
+            return response()->json(['message' => 'No policies to update.'], 500);
+        }
+
+        // 4. Call the 'set' function with the modified policies
+        $response = $this->setFoxEssScheduler(
+            $validatedData['deviceSN'],
+            $policiesToSet
+        );
+
+        if ($response && isset($response['errno']) && $response['errno'] === 0) {
+            return response()->json(['message' => 'Scheduler updated successfully.']);
+        } else {
+            $errorMessage = $response['msg'] ?? 'Failed to update scheduler.';
+            Log::error('Error setting FoxESS scheduler: ' . json_encode($response));
+            return response()->json(['message' => $errorMessage], 500);
+        }
     }
 
     /**
@@ -89,7 +145,6 @@ class TodoController extends Controller
             if ($response->successful()) {
                 return $response->json();
             } else {
-                dd($response->status());
                 Log::error('Error fetching FoxESS scheduler: HTTP Status ' . $response->status() . ' Body: ' . $response->body());
                 return null;
             }
@@ -98,6 +153,42 @@ class TodoController extends Controller
             return null;
         }
     }
+
+    /**
+     * Sets the scheduler policies for a FoxESS device.
+     *
+     * @param string $deviceSN
+     * @param array $policies
+     * @return array|null
+     */
+    private function setFoxEssScheduler(string $deviceSN, array $policies): ?array
+    {
+        $foxApiKey = env('FOX_ESS_API_KEY');
+        if (!$foxApiKey || !$deviceSN) {
+            return null;
+        }
+
+        try {
+            $path = '/op/v2/device/scheduler/set';
+            $body = json_encode(['deviceSN' => $deviceSN, 'policies' => $policies]);
+            $headers = $this->getFoxEssSignature($foxApiKey, $path, $body);
+
+            $response = Http::withHeaders($headers)
+                ->withBody($body, 'application/json')
+                ->post('https://www.foxesscloud.com' . $path);
+
+            if ($response->successful()) {
+                return $response->json();
+            } else {
+                Log::error('Error setting FoxESS scheduler: HTTP Status ' . $response->status() . ' Body: ' . $response->body());
+                return $response->json() ?: null; // Return JSON error body if available
+            }
+        } catch (\Exception $e) {
+            Log::error('Error setting FoxESS scheduler: ' . $e->getMessage());
+            return null;
+        }
+    }
+
 
     /**
      * Generates the required signature for FoxESS API requests.
