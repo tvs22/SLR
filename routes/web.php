@@ -14,11 +14,10 @@ use App\Http\Controllers\BatterySettingsController;
 |
 */
 
+Auth::routes();
 Route::get('/', 'App\Http\Controllers\TodoController@fetchTodo');
 
 Route::post('/scheduler/toggle', 'App\Http\Controllers\TodoController@toggleScheduler');
-
-Auth::routes();
 
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
 

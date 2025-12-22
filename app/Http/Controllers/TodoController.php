@@ -9,6 +9,16 @@ use Illuminate\Support\Facades\Log;
 class TodoController extends Controller
 {
     /**
+     * Create a new controller instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        $this->middleware('auth');
+    }
+
+    /**
      * Fetches data from various APIs and displays the home view.
      *
      * @return \Illuminate\Contracts\View\View

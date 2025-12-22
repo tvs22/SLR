@@ -8,6 +8,16 @@ use Illuminate\Http\Request;
 class BatterySettingsController extends Controller
 {
     /**
+     * Create a new controller instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        $this->middleware('auth');
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index()
@@ -29,7 +39,7 @@ class BatterySettingsController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'target_price_cents' => 'required|numeric',
             'forced_discharge' => 'required|boolean',
             'discharge_start_time' => 'required',
@@ -38,7 +48,7 @@ class BatterySettingsController extends Controller
             'battery_level_percent' => 'required|numeric|min:0|max:100',
         ]);
 
-        BatterySetting::create($request->all());
+        BatterySetting::create($validated);
 
         return redirect()->route('battery-settings.index')
             ->with('success', 'Battery setting created successfully.');
@@ -65,7 +75,7 @@ class BatterySettingsController extends Controller
      */
     public function update(Request $request, BatterySetting $batterySetting)
     {
-        $request->validate([
+        $validated = $request->validate([
             'target_price_cents' => 'required|numeric',
             'forced_discharge' => 'required|boolean',
             'discharge_start_time' => 'required',
@@ -74,7 +84,7 @@ class BatterySettingsController extends Controller
             'battery_level_percent' => 'required|numeric|min:0|max:100',
         ]);
 
-        $batterySetting->update($request->all());
+        $batterySetting->update($validated);
 
         return redirect()->route('battery-settings.index')
             ->with('success', 'Battery setting updated successfully.');
