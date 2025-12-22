@@ -2,8 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\BatterySettingsController;
-use App\Http\Controllers\Web\ScheduleController;
-use App\Http\Controllers\Web\ScheduleActionController;
 use App\Http\Controllers\TodoController;
 
 /*
@@ -28,8 +26,3 @@ Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name
 Route::post('/submit', [App\Http\Controllers\HomeController::class, 'submit']);
 
 Route::resource('battery-settings', BatterySettingsController::class);
-
-Route::get('/schedule', ScheduleController::class);
-Route::post('/schedule/start', [ScheduleActionController::class, 'start']);
-Route::post('/schedule/stop', [ScheduleActionController::class, 'stop']);
-Route::post('/schedule/pause', [ScheduleActionController::class, 'pause']);
