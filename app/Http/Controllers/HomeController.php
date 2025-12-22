@@ -25,4 +25,18 @@ class HomeController extends Controller
     {
         return view('home');
     }
+
+    /**
+     * Handle the form submission.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function submit(Request $request)
+    {
+        $batteryLevel = $request->input('battery_level');
+
+        // For now, just display the submitted value
+        return "Battery Level: " . $batteryLevel;
+    }
 }
