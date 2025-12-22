@@ -26,7 +26,7 @@ class TodoController extends Controller
     }
 
     /**
-     * Toggles the first scheduler policy on or off.
+     * Toggles the specified scheduler policy on or off.
      *
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -39,25 +39,35 @@ class TodoController extends Controller
         ]);
 
         $schedulerData = $this->getFoxEssScheduler();
-           if (!$schedulerData || !isset($schedulerData['result']['groups'])) {
+        if (!$schedulerData || !isset($schedulerData['result']['groups'])) {
             return response()->json(['message' => 'Could not retrieve scheduler policies to update.'], 500);
         }
 
         $groups = $schedulerData['result']['groups'];
+        $policyIndex = -1;
 
-        if (empty($groups[0])) {
-             return response()->json(['message' => 'No policies found to update.'], 500);
+        if (is_array($groups)) {
+            foreach ($groups as $index => $policy) {
+                if (isset($policy['workMode']) && $policy['workMode'] === 'ForceDischarge' && isset($policy['startHour']) && $policy['startHour'] == 14) {
+                    $policyIndex = $index;
+                    break;
+                }
+            }
         }
 
-        // Update the enable flag on the first policy of the first group (0 for disable, 1 for enable)
-        $groups[0]['enable'] = $validatedData['enable'] ? 1 : 0;
+        if ($policyIndex === -1) {
+            return response()->json(['message' => 'No matching policy found to update.'], 404);
+        }
+
+        // Update the enable flag on the found policy
+        $groups[$policyIndex]['enable'] = $validatedData['enable'] ? 1 : 0;
 
         $response = $this->setFoxEssScheduler(
             $groups
         );
 
         if ($response && isset($response['errno']) && $response['errno'] === 0) {
-           return response()->json(['message' => 'Scheduler updated successfully.']);
+            return response()->json(['message' => 'Scheduler updated successfully.']);
         } else {
             $errorMessage = $response['msg'] ?? 'Failed to update scheduler.';
             Log::error('Error setting FoxESS scheduler: ' . json_encode($response));
@@ -141,7 +151,6 @@ class TodoController extends Controller
     /**
      * Sets the scheduler policies for a FoxESS device.
      *
-     * @param string $deviceSN
      * @param array $groups
      * @return array|null
      */

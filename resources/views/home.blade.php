@@ -5,7 +5,7 @@
     <div class="row justify-content-center">
         <div class="col-md-8">
             <div class="card">
-                <div class="card-header">{{ __('Dashboard') }} 
+                <div class="card-header">{{ __('Dashboard') }}
                     <span id="countdown" class="float-end"></span>
                     <span id="clock" class="float-end me-2"></span>
                 </div>
@@ -33,15 +33,26 @@
                         @endif
                     </div>
 
+                    @php
+                        $policyToDisplay = null;
+                        if ($scheduler && isset($scheduler['result']['groups']) && is_array($scheduler['result']['groups'])) {
+                            foreach ($scheduler['result']['groups'] as $policy) {
+                                if (isset($policy['workMode']) && $policy['workMode'] === 'ForceDischarge' && isset($policy['startHour']) && $policy['startHour'] == 14) {
+                                    $policyToDisplay = $policy;
+                                    break;
+                                }
+                            }
+                        }
+                    @endphp
                     <div class="mt-3">
                         <h5>Fox ESS Status</h5>
-                        @if ($scheduler && $scheduler['result'] && isset($scheduler['result']['groups'][0]['enable']))
-                            <p>Force Charge: {{ $scheduler['result']['groups'][0]['enable'] ? 'Enabled' : 'Disabled' }}</p>
+                        @if ($policyToDisplay)
+                            <p>Force Charge: {{ $policyToDisplay['enable'] ? 'Enabled' : 'Disabled' }}</p>
                             <input type="hidden" id="deviceSN" value="{{ $deviceSN }}">
                             <button id="enableBtn" class="btn btn-success">Enable</button>
                             <button id="disableBtn" class="btn btn-danger">Disable</button>
                         @else
-                            <p>Could not retrieve Fox ESS status.</p>
+                            <p>Could not retrieve Fox ESS status or find matching policy.</p>
                         @endif
                     </div>
 
@@ -62,37 +73,47 @@
 @push('scripts')
 <script>
     document.addEventListener("DOMContentLoaded", function(){
-        const deviceSN = document.getElementById('deviceSN').value;
+        const deviceSNElement = document.getElementById('deviceSN');
 
-        document.getElementById('enableBtn').addEventListener('click', () => {
-            toggleScheduler(true);
-        });
+        if (deviceSNElement) {
+            const deviceSN = deviceSNElement.value;
+            const enableBtn = document.getElementById('enableBtn');
+            const disableBtn = document.getElementById('disableBtn');
 
-        document.getElementById('disableBtn').addEventListener('click', () => {
-            toggleScheduler(false);
-        });
+            if (enableBtn) {
+                enableBtn.addEventListener('click', () => {
+                    toggleScheduler(true);
+                });
+            }
 
-        function toggleScheduler(enable) {
-            fetch('/scheduler/toggle', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                },
-                body: JSON.stringify({
-                    deviceSN: deviceSN,
-                    enable: enable
+            if (disableBtn) {
+                disableBtn.addEventListener('click', () => {
+                    toggleScheduler(false);
+                });
+            }
+
+            function toggleScheduler(enable) {
+                fetch('/scheduler/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        deviceSN: deviceSN,
+                        enable: enable
+                    })
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                alert(data.message);
-                window.location.reload();
-            })
-            .catch((error) => {
-                console.error('Error:', error);
-                alert('An error occurred.');
-            });
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    window.location.reload();
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                    alert('An error occurred.');
+                });
+            }
         }
     });
 </script>
