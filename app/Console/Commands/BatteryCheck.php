@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Services\BatteryControlService;
+use Illuminate\Support\Facades\Cache;
 
 class BatteryCheck extends Command
 {
@@ -14,5 +15,6 @@ class BatteryCheck extends Command
     {
         sleep(41);
         $service->run();
+        Cache::put('last_updated', now());
     }
 }

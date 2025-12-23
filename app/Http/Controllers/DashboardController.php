@@ -14,6 +14,7 @@ class DashboardController extends Controller
             'battery' => BatterySetting::first(),
             'prices' => Cache::get('latest_prices'),
             'transactions' => BatteryTransaction::latest()->limit(50)->get(),
+            'last_updated' => Cache::get('last_updated'),
         ]);
     }
 
@@ -23,6 +24,7 @@ class DashboardController extends Controller
             'battery' => BatterySetting::first(),
             'prices' => Cache::get('latest_prices'),
             'transactions' => BatteryTransaction::latest()->limit(50)->get(),
+            'last_updated' => Cache::get('last_updated'),
         ]);
     }
 }
