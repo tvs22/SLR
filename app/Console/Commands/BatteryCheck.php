@@ -12,7 +12,7 @@ class BatteryCheck extends Command
 
     public function handle(BatteryControlService $service)
     {
-        //sleep(41);
+        sleep(41);
         $service->run();
     }
 }
