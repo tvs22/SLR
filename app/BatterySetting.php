@@ -10,6 +10,7 @@ class BatterySetting extends Model
         'target_price_cents',
         'forced_discharge',
         'discharge_start_time',
+        'target_electric_price_cents',
         'forced_charge',
         'charge_start_time',
         'battery_level_percent',

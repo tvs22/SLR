@@ -11,7 +11,7 @@ class DashboardController extends Controller
     public function index()
     {
         return view('dashboard', [
-            'battery' => BatterySetting::first(),
+            'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
             'transactions' => BatteryTransaction::latest()->limit(50)->get(),
             'last_updated' => Cache::get('last_updated'),
@@ -21,7 +21,7 @@ class DashboardController extends Controller
     public function data()
     {
         return response()->json([
-            'battery' => BatterySetting::first(),
+            'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
             'transactions' => BatteryTransaction::latest()->limit(50)->get(),
             'last_updated' => Cache::get('last_updated'),

@@ -9,7 +9,7 @@ use RuntimeException;
 
 class FoxEssService
 {
-    public function setForcedDischarge(bool $enable): void
+    public function setForcedChargeorDischarge(bool $enable, int $startHour, string $workMode): void
     {
         $schedulerData = $this->getFoxEssScheduler();
 
@@ -21,22 +21,14 @@ class FoxEssService
             throw new RuntimeException('Unable to retrieve FoxESS scheduler groups');
         }
 
-        $batterySetting = BatterySetting::latest()->first();
-
-        if (!$batterySetting || !$batterySetting->discharge_start_time) {
-            throw new RuntimeException('Battery discharge start time not configured');
-        }
-
-        $dischargeStartHour = (int) substr($batterySetting->discharge_start_time, 0, 2);
-
         $groups = $schedulerData['result']['groups'];
         $policyIndex = null;
 
         foreach ($groups as $index => $policy) {
             if (
-                ($policy['workMode'] ?? null) === 'ForceDischarge' &&
+                ($policy['workMode'] ?? null) === $workMode &&
                 isset($policy['startHour']) &&
-                (int) $policy['startHour'] === $dischargeStartHour
+                (int) $policy['startHour'] === $startHour
             ) {
                 $policyIndex = $index;
                 break;
@@ -44,7 +36,11 @@ class FoxEssService
         }
 
         if ($policyIndex === null) {
-            throw new RuntimeException('No matching ForceDischarge policy found');
+            if ($enable) {
+                 throw new RuntimeException('No matching ' . $workMode . ' policy found for hour ' . $startHour);
+            } else {
+                return;
+            }
         }
 
         $currentEnable = (int) ($groups[$policyIndex]['enable'] ?? 0);

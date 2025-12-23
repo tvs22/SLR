@@ -37,7 +37,9 @@ function getPriceClass($price) {
                 <div class="card-body">
                     @if ($battery)
                         <p class="card-text"><strong>Target price:</strong> <span id="target-price">{{ number_format($battery->target_price_cents, 2) }}</span> cents</p>
-                        <p class="card-text"><strong>Forced Discharge:</strong> <span id="forced-discharge">{{ $battery->forced_discharge ? 'Yes' : 'No' }}</span></p>
+                        <p class="card-text"><strong>Forced Discharge:</strong> <span id="forced-discharge">{{ $battery->forced_discharge ? 'Yes' : 'No' }}</span>
+                        <strong>Forced Charge:</strong> <span id="forced-charge">{{ $battery->forced_charge ? 'Yes' : 'No' }}</span>
+                    </p>
                     @else
                         <p class="card-text">No battery settings found.</p>
                     @endif
