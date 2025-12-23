@@ -1,5 +1,14 @@
 @extends('layouts.app')
 
+@php
+function getPriceClass($price) {
+    if ($price === null) return '';
+    if ($price > 0) return 'text-success';
+    if ($price < 0) return 'text-danger';
+    return 'text-muted';
+}
+@endphp
+
 @section('content')
 <div class="container">
     <h1 class="mb-4">Battery Dashboard</h1>
@@ -13,8 +22,8 @@
                     <h5>Current Prices</h5>
                 </div>
                 <div class="card-body">
-                    <p class="card-text"><strong>Electricity price:</strong> <span id="electricity-price">{{ isset($prices['electricityPrice']) ? $prices['electricityPrice'] . ' c/kWh' : 'n/a' }}</span></p>
-                    <p class="card-text"><strong>Solar Feed-in Tariff:</strong> <span id="solar-ftt">{{ isset($prices['solarPrice']) ? $prices['solarPrice'] . ' c/kWh' : 'n/a' }}</span></p>
+                    <p class="card-text"><strong>Electricity price:</strong> <span id="electricity-price" class="{{ getPriceClass(isset($prices['electricityPrice']) ? $prices['electricityPrice'] : null) }}">{{ isset($prices['electricityPrice']) ? $prices['electricityPrice'] . ' c/kWh' : 'n/a' }}</span></p>
+                    <p class="card-text"><strong>Solar Feed-in Tariff:</strong> <span id="solar-ftt" class="{{ getPriceClass(isset($prices['solarPrice']) ? $prices['solarPrice'] : null) }}">{{ isset($prices['solarPrice']) ? $prices['solarPrice'] . ' c/kWh' : 'n/a' }}</span></p>
                 </div>
             </div>
         </div>
@@ -59,7 +68,7 @@
                                     <tr>
                                         <td>{{ $t->datetime }}</td>
                                         <td>{{ ucfirst($t->action) }}</td>
-                                        <td>{{ $t->price_cents }}</td>
+                                        <td class="{{ getPriceClass($t->price_cents) }}">{{ $t->price_cents }}</td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -85,41 +94,50 @@
         const forcedDischargeEl = document.getElementById('forced-discharge');
         const transactionsBodyEl = document.getElementById('transactions-body');
 
-        let lastPrices = null;
+        function getPriceClass(price) {
+            if (price === null || price === undefined) return '';
+            if (price > 0) return 'text-success';
+            if (price < 0) return 'text-danger';
+            return 'text-muted';
+        }
 
         function updateDashboard() {
             fetch('{{ route("dashboard.data") }}')
                 .then(response => response.json())
                 .then(data => {
-                    // Only update if the prices have changed
-                    if (JSON.stringify(data.prices) !== lastPrices) {
-                        lastPrices = JSON.stringify(data.prices);
+                    // Update Prices
+                    if (data.prices) {
+                        electricityPriceEl.textContent = data.prices.electricityPrice !== null ? data.prices.electricityPrice + ' c/kWh' : 'n/a';
+                        electricityPriceEl.className = getPriceClass(data.prices.electricityPrice);
+                        solarFttEl.textContent = data.prices.solarPrice !== null ? data.prices.solarPrice + ' c/kWh' : 'n/a';
+                        solarFttEl.className = getPriceClass(data.prices.solarPrice);
+                    } else {
+                        electricityPriceEl.textContent = 'n/a';
+                        electricityPriceEl.className = '';
+                        solarFttEl.textContent = 'n/a';
+                        solarFttEl.className = '';
+                    }
 
-                        // Update Prices
-                        electricityPriceEl.textContent = data.prices && data.prices.electricityPrice ? data.prices.electricityPrice + ' c/kWh' : 'n/a';
-                        solarFttEl.textContent = data.prices && data.prices.solarPrice ? data.prices.solarPrice + ' c/kWh' : 'n/a';
+                    // Update Battery Settings
+                    if (data.battery) {
+                        targetPriceEl.textContent = data.battery.target_price_cents;
+                        forcedDischargeEl.textContent = data.battery.forced_discharge ? 'Yes' : 'No';
+                    }
 
-                        // Update Battery Settings
-                        if (data.battery) {
-                            targetPriceEl.textContent = data.battery.target_price_cents;
-                            forcedDischargeEl.textContent = data.battery.forced_discharge ? 'Yes' : 'No';
-                        }
-
-                        // Update Transactions
-                        transactionsBodyEl.innerHTML = ''; // Clear existing transactions
-                        if (data.transactions && data.transactions.length > 0) {
-                            data.transactions.forEach(t => {
-                                const row = `<tr>
-                                    <td>${t.datetime}</td>
-                                    <td>${t.action.charAt(0).toUpperCase() + t.action.slice(1)}</td>
-                                    <td>${t.price_cents}</td>
-                                </tr>`;
-                                transactionsBodyEl.innerHTML += row;
-                            });
-                        } else {
-                            const row = `<tr><td colspan="3" class="text-center">No recent transactions found.</td></tr>`;
-                            transactionsBodyEl.innerHTML = row;
-                        }
+                    // Update Transactions
+                    transactionsBodyEl.innerHTML = ''; // Clear existing transactions
+                    if (data.transactions && data.transactions.length > 0) {
+                        data.transactions.forEach(t => {
+                            const row = `<tr>
+                                <td>${t.datetime}</td>
+                                <td>${t.action.charAt(0).toUpperCase() + t.action.slice(1)}</td>
+                                <td class="${getPriceClass(t.price_cents)}">${t.price_cents}</td>
+                            </tr>`;
+                            transactionsBodyEl.innerHTML += row;
+                        });
+                    } else {
+                        const row = `<tr><td colspan="3" class="text-center">No recent transactions found.</td></tr>`;
+                        transactionsBodyEl.innerHTML = row;
                     }
                 })
                 .catch(error => console.error('Error fetching dashboard data:', error));
@@ -127,9 +145,6 @@
 
         // Fetch data every 5 seconds
         setInterval(updateDashboard, 5000);
-
-        // Initial call to populate data
-        updateDashboard();
     });
 </script>
 @endpush
