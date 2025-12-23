@@ -22,6 +22,10 @@
                 <input type="time" name="discharge_start_time" id="discharge_start_time" class="form-control" value="{{ $batterySetting->discharge_start_time }}" required>
             </div>
             <div class="form-group">
+                <label for="target_electric_price_cents">Target Electric Price (Cents)</label>
+                <input type="number" name="target_electric_price_cents" id="target_electric_price_cents" class="form-control" value="{{ $batterySetting->target_electric_price_cents }}" required>
+            </div>
+            <div class="form-group">
                 <label for="forced_charge">Forced Charge</label>
                 <select name="forced_charge" id="forced_charge" class="form-control" required>
                     <option value="1" {{ $batterySetting->forced_charge ? 'selected' : '' }}>Yes</option>

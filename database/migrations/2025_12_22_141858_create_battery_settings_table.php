@@ -16,6 +16,7 @@ return new class extends Migration
             $table->decimal('target_price_cents', 5, 2);
             $table->boolean('forced_discharge');
             $table->time('discharge_start_time');
+            $table->decimal('target_electric_price_cents', 5, 2);
             $table->boolean('forced_charge');
             $table->time('charge_start_time');
             $table->decimal('battery_level_percent', 5, 2);
