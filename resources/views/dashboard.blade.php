@@ -36,7 +36,8 @@ function getPriceClass($price) {
                 </div>
                 <div class="card-body">
                     @if ($battery)
-                        <p class="card-text"><strong>Target price:</strong> <span id="target-price">{{ number_format($battery->target_price_cents, 2) }}</span> cents</p>
+                        <p class="card-text"><strong>Target price:</strong> <span id="target-price">{{ number_format($battery->target_price_cents, 2) }} Cents</span>
+                        <strong>Target Electric Price:</strong> <span id="target-electric-price">{{ number_format($battery->target_electric_price_cents, 2) }} Cents</span></p>
                         <p class="card-text"><strong>Forced Discharge:</strong> <span id="forced-discharge">{{ $battery->forced_discharge ? 'Yes' : 'No' }}</span>
                         <strong>Forced Charge:</strong> <span id="forced-charge">{{ $battery->forced_charge ? 'Yes' : 'No' }}</span>
                     </p>
@@ -155,7 +156,7 @@ function getPriceClass($price) {
 
                     // Update Battery Settings
                     if (data.battery) {
-                        targetPriceEl.textContent = parseFloat(data.battery.target_price_cents).toFixed(2) + ' cents';
+                        targetPriceEl.textContent = parseFloat(data.battery.target_price_cents).toFixed(2) + ' Cents';
                         forcedDischargeEl.textContent = data.battery.forced_discharge ? 'Yes' : 'No';
                     }
 
