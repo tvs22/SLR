@@ -1,8 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\BatterySettingsController;
-use App\Http\Controllers\TodoController;
 
 /*
 |--------------------------------------------------------------------------
@@ -10,19 +8,23 @@ use App\Http\Controllers\TodoController;
 |--------------------------------------------------------------------------
 |
 | Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "web" middleware group. Make something great!
 |
 */
 
 Auth::routes();
-Route::get('/', [TodoController::class, 'fetchTodo']);
-Route::get('/latest-transactions', [TodoController::class, 'fetchLatestTransactions']);
 
-Route::post('/scheduler/toggle', [TodoController::class, 'toggleScheduler']);
+// The root route now points to the dashboard.
+Route::get('/', 'App\Http\Controllers\DashboardController@index')->name('home');
 
-Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
+// Redirect the old /home route to the new root.
+Route::redirect('/home', '/', 301);
 
-Route::post('/submit', [App\Http\Controllers\HomeController::class, 'submit']);
+Route::resource('battery-settings', 'App\Http\Controllers\BatterySettingsController');
+Route::get('/dashboard/data', 'App\Http\Controllers\DashboardController@data')->name('dashboard.data');
 
-Route::resource('battery-settings', BatterySettingsController::class);
+Route::get('/internal/cron/battery-check', function () {
+    Artisan::call('battery:check');
+    return response()->json(['ok' => true]);
+});

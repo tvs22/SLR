@@ -20,9 +20,9 @@
                 @foreach ($settings as $setting)
                     <tr>
                         <td>{{ $setting->target_price_cents }}</td>
-                        <td>{{ $setting->forced_discharge }}</td>
+                        <td>{{ $setting->forced_discharge ? 'Yes' : 'No' }}</td>
                         <td>{{ $setting->discharge_start_time }}</td>
-                        <td>{{ $setting->forced_charge }}</td>
+                        <td>{{ $setting->forced_charge ? 'Yes' : 'No' }}</td>
                         <td>{{ $setting->charge_start_time }}</td>
                         <td>{{ $setting->battery_level_percent }}</td>
                         <td>

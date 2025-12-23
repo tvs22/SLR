@@ -15,6 +15,11 @@ class BatterySetting extends Model
         'battery_level_percent',
     ];
 
+    protected $casts = [
+        'forced_discharge' => 'boolean',
+        'forced_charge'=>'boolean'
+    ];
+
     public function batteryTransactions()
     {
         return $this->hasMany(BatteryTransaction::class);
