@@ -42,6 +42,10 @@
                     <input class="form-check-input" type="checkbox" id="current_checkbox" value="current" checked>
                     <label class="form-check-label" for="current_checkbox">Current</label>
                 </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="forecast_checkbox" value="forecast" checked>
+                    <label class="form-check-label" for="forecast_checkbox">Forecast</label>
+                </div>
             </div>
         </div>
     </div>
@@ -127,6 +131,13 @@
                 borderColor: 'rgba(54, 162, 235, 1)',
                 backgroundColor: 'rgba(54, 162, 235, 0.2)',
                 hidden: !document.getElementById('current_checkbox').checked
+            },
+            {
+                label: 'Forecast',
+                data: formatData(chartData.forecast, labels),
+                borderColor: 'rgba(255, 206, 86, 1)',
+                backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                hidden: !document.getElementById('forecast_checkbox').checked
             }
         ];
 
@@ -168,6 +179,11 @@
 
         document.getElementById('current_checkbox').addEventListener('change', function () {
             socChart.data.datasets[2].hidden = !this.checked;
+            socChart.update();
+        });
+        
+        document.getElementById('forecast_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[3].hidden = !this.checked;
             socChart.update();
         });
     });

@@ -18,6 +18,7 @@ Auth::routes();
 // The /battery-soc/get-soc route is public and must be defined
 // before the resource route to have priority.
 Route::get('battery-soc/get-soc', 'App\Http\Controllers\BatterySocController@getSoc')->name('battery_soc.get-soc');
+Route::get('solar-forecasts/get-forecasts', 'App\Http\Controllers\SolarForecastController@getSolarForecasts')->name('solar-forecasts.get-forecasts');
 
 Route::get('/internal/cron/battery-check', function () {
     Artisan::call('battery:check');
@@ -33,5 +34,6 @@ Route::group(['middleware' => ['auth']], function () {
 
     Route::resource('battery-settings', 'App\Http\Controllers\BatterySettingsController');
     Route::resource('battery_soc', 'App\Http\Controllers\BatterySocController');
+    Route::resource('solar-forecasts', 'App\Http\Controllers\SolarForecastController');
     Route::get('/dashboard/data', 'App\Http\Controllers\DashboardController@data')->name('dashboard.data');
 });

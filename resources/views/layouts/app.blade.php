@@ -62,6 +62,9 @@
                                     <a class="dropdown-item" href="{{ route('battery_soc.index') }}">
                                         {{ __('Battery SOC Management') }}
                                     </a>
+                                    <a class="dropdown-item" href="{{ route('solar-forecasts.index') }}">
+                                        {{ __('Solar Forecasts') }}
+                                    </a>
                                 </div>
                             </li>
                             <li class="nav-item dropdown">

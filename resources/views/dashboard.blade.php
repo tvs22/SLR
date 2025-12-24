@@ -16,8 +16,8 @@ function getPriceClass($price) {
     {{-- Key Metrics Grid --}}
     <div class="row">
         {{-- Prices Card --}}
-        <div class="col-md-4 mb-4">
-            <div class="card">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card h-100">
                 <div class="card-header">
                     <h5>Current Prices</h5>
                 </div>
@@ -29,18 +29,17 @@ function getPriceClass($price) {
         </div>
 
         {{-- Battery Settings Card --}}
-        <div class="col-md-4 mb-4">
-            <div class="card">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card h-100">
                 <div class="card-header">
                     <h5>Live Battery Settings</h5>
                 </div>
                 <div class="card-body">
                     @if ($battery)
-                        <p class="card-text"><strong>Target price:</strong> <span id="target-price">{{ number_format($battery->target_price_cents, 2) }} Cents</span>
-                        <strong>Target Electric Price:</strong> <span id="target-electric-price">{{ number_format($battery->target_electric_price_cents, 2) }} Cents</span></p>
-                        <p class="card-text"><strong>Forced Discharge:</strong> <span id="forced-discharge">{{ $battery->forced_discharge ? 'Yes' : 'No' }}</span>
-                        <strong>Forced Charge:</strong> <span id="forced-charge">{{ $battery->forced_charge ? 'Yes' : 'No' }}</span>
-                    </p>
+                        <p class="card-text"><strong>Target price:</strong> <span id="target-price">{{ number_format($battery->target_price_cents, 2) }} Cents</span></p>
+                        <p class="card-text"><strong>Target Electric Price:</strong> <span id="target-electric-price">{{ number_format($battery->target_electric_price_cents, 2) }} Cents</span></p>
+                        <p class="card-text"><strong>Forced Discharge:</strong> <span id="forced-discharge">{{ $battery->forced_discharge ? 'Yes' : 'No' }}</span></p>
+                        <p class="card-text"><strong>Forced Charge:</strong> <span id="forced-charge">{{ $battery->forced_charge ? 'Yes' : 'No' }}</span></p>
                     @else
                         <p class="card-text">No battery settings found.</p>
                     @endif
@@ -49,14 +48,27 @@ function getPriceClass($price) {
         </div>
 
         {{-- Last Updated Card --}}
-        <div class="col-md-4 mb-4">
-            <div class="card">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card h-100">
                 <div class="card-header">
                     <h5>Last Updated</h5>
                 </div>
                 <div class="card-body">
                     <p class="card-text"><span id="last-updated">{{ $last_updated ? $last_updated->diffForHumans() : 'n/a' }}</span></p>
                     <p class="card-text text-muted small">Next update in: <span id="next-update-countdown"></span></p>
+                </div>
+            </div>
+        </div>
+
+        {{-- Solar Forecast Card --}}
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5>Solar Forecast</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text"><strong>Today's Forecast:</strong> <span id="today-forecast">{{ number_format($todayForecast, 2) }} kWh</span></p>
+                    <p class="card-text"><strong>Tomorrow's Forecast:</strong> <span id="tomorrow-forecast">{{ number_format($tomorrowForecast, 2) }} kWh</span></p>
                 </div>
             </div>
         </div>
@@ -71,7 +83,7 @@ function getPriceClass($price) {
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table">
+                        <table class="table table-striped table-hover">
                             <thead>
                                 <tr>
                                     <th scope="col">Timestamp</th>
@@ -107,10 +119,14 @@ function getPriceClass($price) {
         const electricityPriceEl = document.getElementById('electricity-price');
         const solarFttEl = document.getElementById('solar-ftt');
         const targetPriceEl = document.getElementById('target-price');
+        const targetElectricPriceEl = document.getElementById('target-electric-price');
         const forcedDischargeEl = document.getElementById('forced-discharge');
+        const forcedChargeEl = document.getElementById('forced-charge');
         const transactionsBodyEl = document.getElementById('transactions-body');
         const lastUpdatedEl = document.getElementById('last-updated');
         const nextUpdateCountdownEl = document.getElementById('next-update-countdown');
+        const todayForecastEl = document.getElementById('today-forecast');
+        const tomorrowForecastEl = document.getElementById('tomorrow-forecast');
 
         const POLLING_INTERVAL = 300000; // 5 minutes
         let timeRemaining = POLLING_INTERVAL / 1000;
@@ -124,6 +140,7 @@ function getPriceClass($price) {
 
         function timeSince(date) {
             let seconds = Math.floor((new Date() - date) / 1000);
+            if (seconds < 5) return 'just now';
             let interval = seconds / 31536000;
             if (interval > 1) return Math.floor(interval) + " years ago";
             interval = seconds / 2592000;
@@ -157,7 +174,9 @@ function getPriceClass($price) {
                     // Update Battery Settings
                     if (data.battery) {
                         targetPriceEl.textContent = parseFloat(data.battery.target_price_cents).toFixed(2) + ' Cents';
+                        targetElectricPriceEl.textContent = parseFloat(data.battery.target_electric_price_cents).toFixed(2) + ' Cents';
                         forcedDischargeEl.textContent = data.battery.forced_discharge ? 'Yes' : 'No';
+                        forcedChargeEl.textContent = data.battery.forced_charge ? 'Yes' : 'No';
                     }
 
                     // Update Last Updated
@@ -166,6 +185,10 @@ function getPriceClass($price) {
                     } else {
                         lastUpdatedEl.textContent = 'n/a';
                     }
+
+                    // Update Solar Forecast
+                    todayForecastEl.textContent = data.todayForecast ? parseFloat(data.todayForecast).toFixed(2) + ' kWh' : '0.00 kWh';
+                    tomorrowForecastEl.textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
 
                     // Update Transactions
                     transactionsBodyEl.innerHTML = ''; // Clear existing transactions
