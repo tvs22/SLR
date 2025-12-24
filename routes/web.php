@@ -22,6 +22,7 @@ Route::get('/', 'App\Http\Controllers\DashboardController@index')->name('home');
 Route::redirect('/home', '/', 301);
 
 Route::resource('battery-settings', 'App\Http\Controllers\BatterySettingsController');
+Route::resource('battery_soc', 'App\Http\Controllers\BatterySocController');
 Route::get('/dashboard/data', 'App\Http\Controllers\DashboardController@data')->name('dashboard.data');
 
 Route::get('/internal/cron/battery-check', function () {
