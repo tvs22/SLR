@@ -133,4 +133,48 @@ class FoxEssService
             'Content-Type' => 'application/json',
         ];
     }
+    
+    public function getSoc(): ?int
+    {
+        $token = env('FOX_ESS_API_KEY');
+        $deviceSN = env('FOX_ESS_DEVICE_SN');
+
+        if (!$token || !$deviceSN) {
+            Log::error('FOX_ESS_API_KEY or FOX_ESS_DEVICE_SN is not set in .env');
+            return null;
+        }
+
+        $path = '/op/v0/device/real/query';
+        $variables = ['SoC'];
+        $body = json_encode(['sn' => $deviceSN, 'variables' => $variables]);
+        $headers = $this->getFoxEssSignature($token, $path, $body);
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->withBody($body, 'application/json')
+                ->post('https://www.foxesscloud.com' . $path);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                if (isset($data['errno']) && $data['errno'] === 0) {
+                    if (isset($data['result'][0]['datas'])) {
+                        foreach ($data['result'][0]['datas'] as $dataPoint) {
+                            if (isset($dataPoint['name']) && $dataPoint['name'] === 'SoC' && isset($dataPoint['value'])) {
+                                return (int) $dataPoint['value'];
+                            }
+                        }
+                    }
+                }
+                Log::error('FoxESS getSoc returned an error', ['response' => $data]);
+                return null;
+            }
+
+            Log::error('Failed to get SOC from Fox ESS API', ['response' => $response->body()]);
+            return null;
+
+        } catch (\Throwable $e) {
+            Log::error('FoxESS getSoc error: ' . $e->getMessage());
+            return null;
+        }
+    }
 }

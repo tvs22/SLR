@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->integer('hour');
             $table->integer('soc');
-            $table->string('type');
+            $table->enum('type', ['soc_plans', 'soc_low_plans', 'current']);
             $table->timestamps();
         });
     }

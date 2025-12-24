@@ -7,9 +7,6 @@
             <div class="pull-left">
                 <h2>Edit Battery SOC</h2>
             </div>
-            <div class="pull-right">
-                <a class="btn btn-primary" href="{{ route('battery_soc.index') }}"> Back</a>
-            </div>
         </div>
     </div>
 
@@ -44,10 +41,15 @@
             <div class="col-xs-12 col-sm-12 col-md-12">
                 <div class="form-group">
                     <strong>Type:</strong>
-                    <input type="text" name="type" value="{{ $batterySoc->type }}" class="form-control" placeholder="Type">
+                    <select name="type" class="form-control">
+                        <option value="soc_plans" @if($batterySoc->type == 'soc_plans') selected @endif>SOC Plan</option>
+                        <option value="soc_low_plans" @if($batterySoc->type == 'soc_low_plans') selected @endif>SOC Low Plan</option>
+                        <option value="current" @if($batterySoc->type == 'current') selected @endif>Current</option>
+                    </select>
                 </div>
             </div>
-            <div class="col-xs-12 col-sm-12 col-md-12 text-center">
+            <div class="col-xs-12 col-sm-12 col-md-12 d-flex justify-content-end" style="padding-top: 15px; padding-bottom: 15px;">
+              <a class="btn btn-secondary" href="{{ route('battery_soc.index') }}" style="margin-right: 10px;"> Cancel</a>
               <button type="submit" class="btn btn-primary">Submit</button>
             </div>
         </div>

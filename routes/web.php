@@ -24,6 +24,7 @@ Route::redirect('/home', '/', 301);
 Route::resource('battery-settings', 'App\Http\Controllers\BatterySettingsController');
 Route::resource('battery_soc', 'App\Http\Controllers\BatterySocController');
 Route::get('/dashboard/data', 'App\Http\Controllers\DashboardController@data')->name('dashboard.data');
+Route::get('battery-soc/get-soc', 'App\Http\Controllers\BatterySocController@getSoc')->name('battery_soc.get-soc');
 
 Route::get('/internal/cron/battery-check', function () {
     Artisan::call('battery:check');

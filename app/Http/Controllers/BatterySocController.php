@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\BatterySoc;
+use App\Services\FoxEssService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class BatterySocController extends Controller
@@ -14,15 +16,22 @@ class BatterySocController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('auth');
+        $this->middleware('auth')->except('getSoc');
     }
 
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $socData = BatterySoc::orderBy('hour')->get();
+        $socData = BatterySoc::query();
+
+        if ($request->filled('type')) {
+            $socData->where('type', $request->type);
+        }
+
+        $socData = $socData->orderBy('hour')->get();
+
         return view('battery_soc.index', compact('socData'));
     }
 
@@ -93,5 +102,41 @@ class BatterySocController extends Controller
 
         return redirect()->route('battery_soc.index')
                         ->with('success', 'Battery SOC deleted successfully');
+    }
+
+    /**
+     * Get the current battery SOC from the FOX ESS API.
+     */
+    public function getSoc(FoxEssService $foxEssService)
+    {
+        $now = Carbon::now();
+        $currentHour = $now->hour;
+
+        // Check if a 'current' SOC value for this hour has already been recorded today.
+        $existingEntry = BatterySoc::where('type', 'current')
+            ->where('hour', $currentHour)
+            ->whereDate('created_at', $now->today())
+            ->first();
+
+        if ($existingEntry) {
+            return redirect()->route('battery_soc.index')
+                            ->with('error', 'A "current" SOC value for this hour has already been recorded today.');
+        }
+
+        $soc = $foxEssService->getSoc();
+
+        if ($soc !== null) {
+            BatterySoc::create([
+                'type' => 'current',
+                'hour' => $currentHour,
+                'soc' => $soc,
+            ]);
+
+            return redirect()->route('battery_soc.index')
+                ->with('success', 'Battery SOC updated successfully.');
+        }
+
+        return redirect()->route('battery_soc.index')
+            ->with('error', 'Failed to update Battery SOC.');
     }
 }

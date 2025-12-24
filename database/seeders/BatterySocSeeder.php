@@ -22,12 +22,12 @@ class BatterySocSeeder extends Seeder
         ];
 
         foreach ($SOC_PLAN as $hour => $soc) {
-            DB::table(\'battery_soc\')->insert([
-                \'hour\' => $hour,
-                \'soc\' => $soc,
-                \'type\' => \'soc_plans\',
-                \'created_at' => Carbon::now(),
-                \'updated_at' => Carbon::now(),
+            DB::table('battery_soc')->insert([
+                'hour' => $hour,
+                'soc' => $soc,
+                'type' => 'soc_plans',
+                'created_at' => Carbon::now(),
+                'updated_at' => Carbon::now(),
             ]);
         }
         $SOC_Low_PLAN = [
@@ -37,12 +37,12 @@ class BatterySocSeeder extends Seeder
         ];
 
         foreach ($SOC_Low_PLAN as $hour => $soc) {
-            DB::table(\'battery_soc\')->insert([
-                \'hour\' => $hour,
-                \'soc\' => $soc,
-                \'type\' => \'soc_low_plans\',
-                \'created_at' => Carbon::now(),
-                \'updated_at' => Carbon::now(),
+            DB::table('battery_soc')->insert([
+                'hour' => $hour,
+                'soc' => $soc,
+                'type' => 'soc_low_plans',
+                'created_at' => Carbon::now(),
+                'updated_at' => Carbon::now(),
             ]);
         }
     }
