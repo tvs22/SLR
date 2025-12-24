@@ -50,8 +50,19 @@
                                 </li>
                             @endif
                         @else
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('battery-settings.index') }}">{{ __('Battery Settings') }}</a>
+                            <li class="nav-item dropdown">
+                                <a id="utilitiesDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>
+                                    {{ __('Utilities') }}
+                                </a>
+
+                                <div class="dropdown-menu dropdown-menu-end" aria-labelledby="utilitiesDropdown">
+                                    <a class="dropdown-item" href="{{ route('battery-settings.index') }}">
+                                        {{ __('Battery Settings') }}
+                                    </a>
+                                    <a class="dropdown-item" href="{{ route('battery_soc.index') }}">
+                                        {{ __('Battery SOC Management') }}
+                                    </a>
+                                </div>
                             </li>
                             <li class="nav-item dropdown">
                                 <a id="navbarDropdown" class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" v-pre>

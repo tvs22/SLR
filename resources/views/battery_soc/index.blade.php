@@ -26,6 +26,26 @@
         </div>
     @endif
 
+    <div class="row">
+        <div class="col-md-12">
+            <canvas id="socChart"></canvas>
+            <div class="form-group">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="soc_plan_checkbox" value="soc_plan" checked>
+                    <label class="form-check-label" for="soc_plan_checkbox">SOC Plan</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="soc_low_plan_checkbox" value="soc_low_plan">
+                    <label class="form-check-label" for="soc_low_plan_checkbox">SOC Low Plan</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="current_checkbox" value="current" checked>
+                    <label class="form-check-label" for="current_checkbox">Current</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <form action="{{ route('battery_soc.index') }}" method="GET" class="my-3">
         <div class="row">
             <div class="col-md-4">
@@ -69,4 +89,87 @@
         @endforeach
     </table>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const ctx = document.getElementById('socChart').getContext('2d');
+        const chartData = @json($chartData);
+
+        const labels = [...Array(17).keys()].map(i => i + 7).concat([...Array(7).keys()]);
+
+        function formatData(data, labels) {
+            if (!data) {
+                return [];
+            }
+            const dataMap = new Map(Object.entries(data));
+            return labels.map(label => dataMap.get(String(label)) || null);
+        }
+
+        const datasets = [
+            {
+                label: 'SOC Plan',
+                data: formatData(chartData.soc_plans, labels),
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                hidden: !document.getElementById('soc_plan_checkbox').checked
+            },
+            {
+                label: 'SOC Low Plan',
+                data: formatData(chartData.soc_low_plans, labels),
+                borderColor: 'rgba(255, 99, 132, 1)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                hidden: !document.getElementById('soc_low_plan_checkbox').checked
+            },
+            {
+                label: 'Current',
+                data: formatData(chartData.current, labels),
+                borderColor: 'rgba(54, 162, 235, 1)',
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                hidden: !document.getElementById('current_checkbox').checked
+            }
+        ];
+
+        const socChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Hour'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'SOC (%)'
+                        },
+                        min: 0,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        document.getElementById('soc_plan_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[0].hidden = !this.checked;
+            socChart.update();
+        });
+
+        document.getElementById('soc_low_plan_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[1].hidden = !this.checked;
+            socChart.update();
+        });
+
+        document.getElementById('current_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[2].hidden = !this.checked;
+            socChart.update();
+        });
+    });
+</script>
 @endsection

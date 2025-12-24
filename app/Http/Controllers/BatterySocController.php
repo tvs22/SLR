@@ -16,7 +16,7 @@ class BatterySocController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('auth')->except('getSoc');
+        
     }
 
     /**
@@ -31,8 +31,18 @@ class BatterySocController extends Controller
         }
 
         $socData = $socData->orderBy('hour')->get();
+        
+        $allSocData = BatterySoc::get();
+        $chartData = $allSocData->groupBy('type')->map(function ($group, $type) {
+            if ($type === 'current') {
+                return $group->groupBy('hour')->map(function ($hourGroup) {
+                    return $hourGroup->sortByDesc('created_at')->first()->soc;
+                });
+            }
+            return $group->pluck('soc', 'hour');
+        });
 
-        return view('battery_soc.index', compact('socData'));
+        return view('battery_soc.index', compact('socData', 'chartData'));
     }
 
     /**
@@ -109,6 +119,11 @@ class BatterySocController extends Controller
      */
     public function getSoc(FoxEssService $foxEssService)
     {
+        // Delete old 'current' SOC data
+        BatterySoc::where('type', 'current')
+            ->whereDate('created_at', '<', Carbon::today())
+            ->delete();
+
         $now = Carbon::now();
         $currentHour = $now->hour;
 
