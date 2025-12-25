@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Http\Request;
-use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\PriceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -17,3 +17,5 @@ use App\Http\Controllers\ScheduleController;
 Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+Route::get('/price/estimated-solar-forecast', [PriceController::class, 'getEstimatedSolarForecast']);

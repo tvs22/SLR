@@ -64,9 +64,13 @@ class BatterySocController extends Controller
 
             $predictedSoc = $lastKnownSoc;
             for ($hour = $lastKnownHour + 1; $hour <= $lastForecastHour; $hour++) {
-                // Convert solar kWh to SOC percentage (1% SOC = 0.4193 kWh)
-                $charge = $solarForecast->get($hour, 0) / 0.4193;
-                $predictedSoc = $lastKnownSoc+ min(100, $charge);
+                $lastHourKwh = $solarForecast->get($hour - 1, 0);
+                $currentHourKwh = $solarForecast->get($hour, 0);
+                $hourlyGeneration = $currentHourKwh - $lastHourKwh;
+
+                $charge = $hourlyGeneration / 0.4193;
+                $predictedSoc += $charge;
+                $predictedSoc = min(100, $predictedSoc);
                 $forecastData->put($hour, round($predictedSoc));
             }
         }

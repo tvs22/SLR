@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Cache;
 class BatteryCheck extends Command
 {
     protected $signature = 'battery:check';
-    protected $description = 'Fetch prices and update battery forced discharge';
+    protected $description = 'Fetch prices and update battery forced discharge and charge';
 
     public function handle(BatteryControlService $service)
     {
