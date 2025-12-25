@@ -23,7 +23,9 @@ class DashboardController extends Controller
         return view('dashboard', [
             'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
-            'transactions' => BatteryTransaction::latest()->limit(50)->get(),
+            'transactions' => BatteryTransaction::latest()->limit(50)->get()->groupBy(function($item) {
+                return Carbon::parse($item->datetime)->format('d-m-Y');
+            }),
             'last_updated' => Cache::get('last_updated'),
             'todayForecast' => $todayForecast ? $todayForecast->kwh : 0,
             'tomorrowForecast' => $tomorrowForecast ? $tomorrowForecast->kwh : 0,
@@ -38,7 +40,9 @@ class DashboardController extends Controller
         return response()->json([
             'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
-            'transactions' => BatteryTransaction::latest()->limit(50)->get(),
+            'transactions' => BatteryTransaction::latest()->limit(50)->get()->groupBy(function($item) {
+                return Carbon::parse($item->datetime)->format('d-m-Y');
+            }),
             'last_updated' => Cache::get('last_updated'),
             'todayForecast' => $todayForecast ? $todayForecast->kwh : 0,
             'tomorrowForecast' => $tomorrowForecast ? $tomorrowForecast->kwh : 0,

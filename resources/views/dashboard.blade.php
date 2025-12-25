@@ -92,12 +92,17 @@ function getPriceClass($price) {
                                 </tr>
                             </thead>
                             <tbody id="transactions-body">
-                                @forelse ($transactions as $t)
+                                @forelse ($transactions as $date => $dailyTransactions)
                                     <tr>
-                                        <td>{{ $t->datetime }}</td>
-                                        <td>{{ ucfirst($t->action) }}</td>
-                                        <td class="{{ getPriceClass($t->price_cents) }}">{{ number_format($t->price_cents, 2) }}</td>
+                                        <td colspan="3" class="text-center font-weight-bold bg-light">{{ $date }}</td>
                                     </tr>
+                                    @foreach ($dailyTransactions as $t)
+                                        <tr>
+                                            <td>{{ Carbon\Carbon::parse($t->datetime)->format('g:i A') }}</td>
+                                            <td>{{ ucfirst($t->action) }}</td>
+                                            <td class="{{ getPriceClass($t->price_cents) }}">{{ number_format($t->price_cents, 2) }}</td>
+                                        </tr>
+                                    @endforeach
                                 @empty
                                     <tr>
                                         <td colspan="3" class="text-center">No recent transactions found.</td>
@@ -153,6 +158,11 @@ function getPriceClass($price) {
             if (interval > 1) return Math.floor(interval) + " minutes ago";
             return Math.floor(seconds) + " seconds ago";
         }
+        
+        function formatTime(datetime) {
+            const date = new Date(datetime);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
 
         function updateDashboard() {
             fetch('{{ route("dashboard.data") }}')
@@ -192,15 +202,19 @@ function getPriceClass($price) {
 
                     // Update Transactions
                     transactionsBodyEl.innerHTML = ''; // Clear existing transactions
-                    if (data.transactions && data.transactions.length > 0) {
-                        data.transactions.forEach(t => {
-                            const row = `<tr>
-                                <td>${t.datetime}</td>
-                                <td>${t.action.charAt(0).toUpperCase() + t.action.slice(1)}</td>
-                                <td class="${getPriceClass(t.price_cents)}">${parseFloat(t.price_cents).toFixed(2)}</td>
-                            </tr>`;
-                            transactionsBodyEl.innerHTML += row;
-                        });
+                    if (data.transactions && Object.keys(data.transactions).length > 0) {
+                        for (const date in data.transactions) {
+                            let dateRow = `<tr><td colspan="3" class="text-center font-weight-bold bg-light">${date}</td></tr>`;
+                            transactionsBodyEl.innerHTML += dateRow;
+                            data.transactions[date].forEach(t => {
+                                const row = `<tr>
+                                    <td>${formatTime(t.datetime)}</td>
+                                    <td>${t.action.charAt(0).toUpperCase() + t.action.slice(1)}</td>
+                                    <td class="${getPriceClass(t.price_cents)}">${parseFloat(t.price_cents).toFixed(2)}</td>
+                                </tr>`;
+                                transactionsBodyEl.innerHTML += row;
+                            });
+                        }
                     } else {
                         const row = `<tr><td colspan="3" class="text-center">No recent transactions found.</td></tr>`;
                         transactionsBodyEl.innerHTML = row;

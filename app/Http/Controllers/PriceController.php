@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AmberService;
 use App\Services\FoxEssService;
 use App\SolarForecast;
 use Carbon\Carbon;
@@ -9,13 +10,7 @@ use Illuminate\Http\JsonResponse;
 
 class PriceController extends Controller
 {
-    /**
-     * Get the estimated solar forecast for the current time.
-     *
-     * @param FoxEssService $foxEssService
-     * @return JsonResponse
-     */
-    public function getEstimatedSolarForecast(FoxEssService $foxEssService): JsonResponse
+    public function getPredictedPrices(AmberService $amberService, FoxEssService $foxEssService): JsonResponse
     {
         $now = Carbon::now();
         $today = $now->toDateString();
@@ -25,12 +20,18 @@ class PriceController extends Controller
         $forecastsToday = SolarForecast::where('date', $today)->orderBy('hour', 'asc')->get();
 
         if ($forecastsToday->isEmpty()) {
-            $soc = $foxEssService->getSoc();
+            //$soc = $foxEssService->getSoc();
+            $soc= 52;
+            $kwhToBuy = round((100 - $soc) * 0.4193, 2);
+            $predictedPrices = $amberService->predicted_prices(intval($kwhToBuy),'BuyKWH',2,6);
+
             return response()->json([
                 'soc' => $soc,
                 'remaining_solar_generation_today' => 0,
                 'forecast_soc' => $soc,
-            ], 404);
+                'kwh_to_buy' => $kwhToBuy,
+                'predicted_prices' => $predictedPrices,
+            ]);
         }
 
         $totalDayGeneration = $forecastsToday->last()->kwh;
@@ -64,18 +65,27 @@ class PriceController extends Controller
         $remainingGeneration = $totalDayGeneration - $generatedSoFarToday;
         $remainingGeneration = max(0, $remainingGeneration);
 
-        $soc = $foxEssService->getSoc();
+        //$soc = $foxEssService->getSoc();
+        $soc=52;
         $forecastSoc = null;
+        $kwhToBuy = null;
 
         if ($soc !== null) {
             $forecastSoc = $soc + ($remainingGeneration / 0.4193);
             $forecastSoc = min(100, round($forecastSoc));
+
+            $gapSoc = 100 - $forecastSoc;
+            $kwhToBuy = round($gapSoc * 0.4193, 2);
         }
+
+        $predictedPrices = $amberService->predicted_prices(intval($kwhToBuy),'SellKWH');
 
         return response()->json([
             'soc' => $soc,
             'remaining_solar_generation_today' => round($remainingGeneration, 2),
             'forecast_soc' => $forecastSoc,
+            'kwh_to_buy' => $kwhToBuy,
+            'predicted_prices' => $predictedPrices,
         ]);
     }
 }

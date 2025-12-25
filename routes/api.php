@@ -18,4 +18,4 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::get('/price/estimated-solar-forecast', [PriceController::class, 'getEstimatedSolarForecast']);
+Route::get('/price/predicted-prices', [PriceController::class, 'getPredictedPrices']);

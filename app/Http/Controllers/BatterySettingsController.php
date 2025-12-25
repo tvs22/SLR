@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\BatterySetting;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class BatterySettingsController extends Controller
 {
@@ -41,12 +42,15 @@ class BatterySettingsController extends Controller
     {
         $validated = $request->validate([
             'target_price_cents' => 'required|numeric',
+            'longterm_target_price_cents' => 'required|numeric',
             'forced_discharge' => 'required|boolean',
             'discharge_start_time' => 'required',
             'target_electric_price_cents' => 'required|numeric',
+            'longterm_target_electric_price_cents' => 'required|numeric',
             'forced_charge' => 'required|boolean',
             'charge_start_time' => 'required',
             'battery_level_percent' => 'required|numeric|min:0|max:100',
+            'status' => ['required', Rule::in(['prioritize_charging', 'prioritize_selling', 'self_sufficient'])],
         ]);
 
         BatterySetting::create($validated);
@@ -78,12 +82,15 @@ class BatterySettingsController extends Controller
     {
         $validated = $request->validate([
             'target_price_cents' => 'required|numeric',
+            'longterm_target_price_cents' => 'required|numeric',
             'forced_discharge' => 'required|boolean',
             'discharge_start_time' => 'required',
             'target_electric_price_cents' => 'required|numeric',
+            'longterm_target_electric_price_cents' => 'required|numeric',
             'forced_charge' => 'required|boolean',
             'charge_start_time' => 'required',
             'battery_level_percent' => 'required|numeric|min:0|max:100',
+            'status' => ['required', Rule::in(['prioritize_charging', 'prioritize_selling', 'self_sufficient'])],
         ]);
 
         $batterySetting->update($validated);
