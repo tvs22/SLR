@@ -115,8 +115,7 @@ class SolarForecastController extends Controller
     public function getSolarForecasts()
     {
         // Delete all forecasts not created today
-        SolarForecast::where('created_at', '< ', Carbon::today())->delete();
-        
+        SolarForecast::whereDate('created_at', '<', Carbon::today())->delete();
         // Check if today's forecast already exists
         $todaysForecastExists = SolarForecast::whereDate('date', Carbon::today())->exists();
 
