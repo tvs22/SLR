@@ -45,6 +45,7 @@ class BatterySocController extends Controller
         });
 
         $today = Carbon::today()->toDateString();
+        $pvYield = PvYield::where('date', $today)->pluck('kwh', 'hour');
         $solarForecast = SolarForecast::where('date', $today)->pluck('kwh', 'hour');
         $lastForecastHour = $solarForecast->keys()->last();
 
@@ -78,6 +79,7 @@ class BatterySocController extends Controller
 
         $chartData->put('forecast', $forecastData);
         $chartData->put('solar_forecast', $solarForecast);
+        $chartData->put('pv_yield', $pvYield);
 
         return view('battery_soc.index', compact('socData', 'chartData'));
     }

@@ -50,6 +50,10 @@
                     <input class="form-check-input" type="checkbox" id="solar_forecast_checkbox" value="solar_forecast" checked>
                     <label class="form-check-label" for="solar_forecast_checkbox">Solar Forecast</label>
                 </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="pv_yield_checkbox" value="pv_yield" checked>
+                    <label class="form-check-label" for="pv_yield_checkbox">PV Yield</label>
+                </div>
             </div>
         </div>
     </div>
@@ -154,6 +158,14 @@
                 backgroundColor: 'rgba(153, 102, 255, 0.2)',
                 hidden: !document.getElementById('solar_forecast_checkbox').checked,
                 yAxisID: 'y1',
+            },
+            {
+                label: 'PV Yield (kWh)',
+                data: formatData(chartData.pv_yield, labels),
+                borderColor: 'rgba(255, 159, 64, 1)',
+                backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                hidden: !document.getElementById('pv_yield_checkbox').checked,
+                yAxisID: 'y1',
             }
         ];
 
@@ -188,7 +200,7 @@
                         position: 'right',
                         title: {
                             display: true,
-                            text: 'Solar Forecast (kWh)'
+                            text: 'kWh'
                         },
                         grid: {
                             drawOnChartArea: false, // only want the grid lines for one axis to show up
@@ -220,6 +232,11 @@
 
         document.getElementById('solar_forecast_checkbox').addEventListener('change', function () {
             socChart.data.datasets[4].hidden = !this.checked;
+            socChart.update();
+        });
+
+        document.getElementById('pv_yield_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[5].hidden = !this.checked;
             socChart.update();
         });
     });
