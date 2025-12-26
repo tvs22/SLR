@@ -11,7 +11,10 @@ function getPriceClass($price) {
 
 @section('content')
 <div class="container">
-    <h1 class="mb-4">Battery Dashboard</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Battery Dashboard</h1>
+        <button id="predict-prices-btn" class="btn btn-primary">Predict Prices</button>
+    </div>
 
     <div class="row">
         {{-- Prices & Status --}}
@@ -291,6 +294,21 @@ function getPriceClass($price) {
             const seconds = timeRemaining % 60;
             document.getElementById('next-update-countdown').textContent = `${minutes}m ${seconds}s`;
         }
+
+        document.getElementById('predict-prices-btn').addEventListener('click', function() {
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Predicting...';
+            fetch('/api/price/predicted-prices', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            })
+            .finally(() => {
+                location.reload();
+            });
+        });
 
         setInterval(updateDashboard, POLLING_INTERVAL);
         setInterval(updateCountdown, 1000);
