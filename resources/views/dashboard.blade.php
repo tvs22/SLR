@@ -13,104 +13,146 @@ function getPriceClass($price) {
 <div class="container">
     <h1 class="mb-4">Battery Dashboard</h1>
 
-    {{-- Key Metrics Grid --}}
     <div class="row">
-        {{-- Prices Card --}}
+        {{-- Prices & Status --}}
         <div class="col-lg-3 col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-header">
-                    <h5>Current Prices</h5>
+                    <h5>Live Status</h5>
+                    <small class="text-muted">Real-time electricity prices and battery status</small>
                 </div>
                 <div class="card-body">
-                    <p class="card-text"><strong>Electricity price:</strong> <span id="electricity-price" class="{{ getPriceClass(isset($prices['electricityPrice']) ? $prices['electricityPrice'] : null) }}">{{ isset($prices['electricityPrice']) ? number_format($prices['electricityPrice'], 2) . ' c/kWh' : 'n/a' }}</span></p>
-                    <p class="card-text"><strong>Solar Feed-in Tariff:</strong> <span id="solar-ftt" class="{{ getPriceClass(isset($prices['solarPrice']) ? $prices['solarPrice'] : null) }}">{{ isset($prices['solarPrice']) ? number_format($prices['solarPrice'], 2) . ' c/kWh' : 'n/a' }}</span></p>
+                    <p><strong>Electricity price:</strong> <span id="electricity-price" class="{{ getPriceClass($prices['electricityPrice'] ?? null) }}">{{ isset($prices['electricityPrice']) ? number_format($prices['electricityPrice'], 2) . ' c/kWh' : 'n/a' }}</span></p>
+                    <p><strong>Solar Feed-in Tariff:</strong> <span id="solar-ftt" class="{{ getPriceClass($prices['solarPrice'] ?? null) }}">{{ isset($prices['solarPrice']) ? number_format($prices['solarPrice'], 2) . ' c/kWh' : 'n/a' }}</span></p>
+                    <hr>
+                    <p><strong>Forced Discharge:</strong> <span id="forced-discharge">{{ ($battery->forced_discharge ?? false) ? 'Yes' : 'No' }}</span></p>
+                    <p><strong>Forced Charge:</strong> <span id="forced-charge">{{ ($battery->forced_charge ?? false) ? 'Yes' : 'No' }}</span></p>
+                    <hr>
+                    <h6>Battery Settings</h6>
+                    <p><strong>Target price:</strong> <span id="target-price">{{ number_format($battery->target_price_cents ?? 0, 2) }} Cents</span></p>
+                    <p><strong>Target Electric Price:</strong> <span id="target-electric-price">{{ number_format($battery->target_electric_price_cents ?? 0, 2) }} Cents</span></p>
+                </div>
+                <div class="card-footer">
+                    <small class="text-muted">Last updated: <span id="last-updated">{{ $last_updated ? $last_updated->diffForHumans() : 'n/a' }}</span></small><br>
+                    <small class="text-muted">Next update in: <span id="next-update-countdown"></span></small>
                 </div>
             </div>
         </div>
 
-        {{-- Battery Settings Card --}}
+        {{-- SOC & Solar --}}
         <div class="col-lg-3 col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-header">
-                    <h5>Live Battery Settings</h5>
+                    <h5>Battery & Solar</h5>
+                    <small class="text-muted">Current state of charge and solar generation forecast</small>
                 </div>
                 <div class="card-body">
-                    @if ($battery)
-                        <p class="card-text"><strong>Target price:</strong> <span id="target-price">{{ number_format($battery->target_price_cents, 2) }} Cents</span></p>
-                        <p class="card-text"><strong>Target Electric Price:</strong> <span id="target-electric-price">{{ number_format($battery->target_electric_price_cents, 2) }} Cents</span></p>
-                        <p class="card-text"><strong>Forced Discharge:</strong> <span id="forced-discharge">{{ $battery->forced_discharge ? 'Yes' : 'No' }}</span></p>
-                        <p class="card-text"><strong>Forced Charge:</strong> <span id="forced-charge">{{ $battery->forced_charge ? 'Yes' : 'No' }}</span></p>
+                    <p><strong>Current SOC:</strong> <span id="soc">{{ $soc ? $soc . '%' : 'n/a' }}</span></p>
+                    <p><strong>Remaining Solar Generation:</strong> <span id="remaining-solar">{{ number_format($remaining_solar_generation_today, 2) . ' kWh' ?? 'n/a' }}</span></p>
+                    <p><strong>Forecast SOC:</strong> <span id="forecast-soc">{{ $forecast_soc . '%' ?? 'n/a' }}</span></p>
+                    <hr>
+                    <h6>Solar Power</h6>
+                    <p><strong>Today's Forecast:</strong> <span id="today-forecast">{{ number_format($todayForecast ?? 0, 2) }} kWh</span></p>
+                    <p><strong>Tomorrow's Forecast:</strong> <span id="tomorrow-forecast">{{ number_format($tomorrowForecast ?? 0, 2) }} kWh</span></p>
+                </div>
+            </div>
+        </div>
+
+        {{-- Sell Strategy --}}
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5>Sell Strategy</h5>
+                    <small class="text-muted">Optimal times to sell back to the grid</small>
+                </div>
+                <div class="card-body" id="sell-strategy-container">
+                    @if ($sellStrategy && isset($sellStrategy['error']))
+                        <p class="text-danger">{{ $sellStrategy['error'] }}</p>
+                    @elseif ($sellStrategy && isset($sellStrategy['message']))
+                        <p>{{ $sellStrategy['message'] }}</p>
+                    @elseif ($sellStrategy)
+                        <p><strong>Total kWh to be sold:</strong> <span id="sell-kwh">{{ number_format($sellStrategy['total_kwh_sold'] ?? 0, 2) }} kWh</span></p>
+                        <p><strong>Total Revenue:</strong> <span id="sell-revenue">${{ number_format(($sellStrategy['total_revenue'] ?? 0) / 100, 2) }}</span></p>
+                        <p><strong>Highest Sell Price:</strong> <span id="highest-sell-price">{{ number_format($sellStrategy['highest_sell_price'] ?? 0, 2) }} c/kWh</span></p>
+                        <p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">{{ number_format($sellStrategy['lowest_sell_price'] ?? 0, 2) }} c/kWh</span></p>
                     @else
-                        <p class="card-text">No battery settings found.</p>
+                        <p>No data available.</p>
                     @endif
                 </div>
             </div>
         </div>
 
-        {{-- Last Updated Card --}}
+        {{-- Buy Strategy --}}
         <div class="col-lg-3 col-md-6 mb-4">
             <div class="card h-100">
                 <div class="card-header">
-                    <h5>Last Updated</h5>
+                    <h5>Buy Strategy</h5>
+                    <small class="text-muted">Optimal times to charge from the grid</small>
                 </div>
-                <div class="card-body">
-                    <p class="card-text"><span id="last-updated">{{ $last_updated ? $last_updated->diffForHumans() : 'n/a' }}</span></p>
-                    <p class="card-text text-muted small">Next update in: <span id="next-update-countdown"></span></p>
-                </div>
-            </div>
-        </div>
-
-        {{-- Solar Forecast Card --}}
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header">
-                    <h5>Solar Forecast</h5>
-                </div>
-                <div class="card-body">
-                    <p class="card-text"><strong>Today's Forecast:</strong> <span id="today-forecast">{{ number_format($todayForecast, 2) }} kWh</span></p>
-                    <p class="card-text"><strong>Tomorrow's Forecast:</strong> <span id="tomorrow-forecast">{{ number_format($tomorrowForecast, 2) }} kWh</span></p>
+                <div class="card-body" id="buy-strategy-container">
+                    @if ($buyStrategy && isset($buyStrategy['error']))
+                        <p class="text-danger">{{ $buyStrategy['error'] }}</p>
+                    @elseif ($buyStrategy && isset($buyStrategy['message']))
+                        <p>{{ $buyStrategy['message'] }}</p>
+                    @elseif ($buyStrategy)
+                        <p><strong>kWh to buy:</strong> <span id="buy-kwh">{{ number_format($kwh_to_buy ?? 0, 2) }} kWh</span></p>
+                        <p><strong>Total Cost:</strong> <span id="buy-cost">${{ number_format(($buyStrategy['total_cost'] ?? 0) / 100, 2) }}</span></p>
+                        <p><strong>Total Revenue:</strong> <span id="buy-revenue">${{ number_format(($buyStrategy['total_revenue'] ?? 0) / 100, 2) }}</span></p>
+                        <p><strong>Estimated Profit:</strong> <span id="buy-profit">${{ number_format(($buyStrategy['estimated_profit'] ?? 0) / 100, 2) }}</span></p>
+                        <p><strong>Highest Buy Price:</strong> <span id="highest-buy-price">{{ number_format($buyStrategy['highest_buy_price'] ?? 0, 2) }} c/kWh</span></p>
+                        <p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">{{ number_format($buyStrategy['lowest_sell_price'] ?? 0, 2) }} c/kWh</span></p>
+                    @else
+                        <p>No data available.</p>
+                    @endif
                 </div>
             </div>
         </div>
     </div>
 
-    {{-- Recent Transactions Table --}}
+    {{-- Transaction Log --}}
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
                     <h5>Recent Transactions</h5>
+                    <small class="text-muted">The last 10 transactions recorded</small>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th scope="col">Timestamp</th>
-                                    <th scope="col">Action</th>
-                                    <th scope="col">Price (cents)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="transactions-body">
-                                @forelse ($transactions as $date => $dailyTransactions)
-                                    <tr>
-                                        <td colspan="3" class="text-center font-weight-bold bg-light">{{ $date }}</td>
-                                    </tr>
-                                    @foreach ($dailyTransactions as $t)
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Action</th>
+                                <th>Price (c/kWh)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transaction-log-body">
+                            @php
+                                $currentDate = null;
+                            @endphp
+                            @if ($transactions && $transactions->count() > 0)
+                                @foreach ($transactions as $transaction)
+                                    @if ($currentDate !== $transaction->datetime->format('Y-m-d'))
+                                        @php
+                                            $currentDate = $transaction->datetime->format('Y-m-d');
+                                        @endphp
                                         <tr>
-                                            <td>{{ Carbon\Carbon::parse($t->datetime)->format('g:i A') }}</td>
-                                            <td>{{ ucfirst($t->action) }}</td>
-                                            <td class="{{ getPriceClass($t->price_cents) }}">{{ number_format($t->price_cents, 2) }}</td>
+                                            <td colspan="3" class="text-center table-secondary"><strong>{{ $transaction->datetime->format('l, F j, Y') }}</strong></td>
                                         </tr>
-                                    @endforeach
-                                @empty
+                                    @endif
                                     <tr>
-                                        <td colspan="3" class="text-center">No recent transactions found.</td>
+                                        <td>{{ $transaction->datetime->format('H:i:s') }}</td>
+                                        <td>{{ $transaction->action }}</td>
+                                        <td>{{ number_format($transaction->price_cents, 2) }}</td>
                                     </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
+                                @endforeach
+                            @else
+                                <tr>
+                                    <td colspan="3" class="text-center">No transactions found.</td>
+                                </tr>
+                            @endif
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -121,18 +163,6 @@ function getPriceClass($price) {
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const electricityPriceEl = document.getElementById('electricity-price');
-        const solarFttEl = document.getElementById('solar-ftt');
-        const targetPriceEl = document.getElementById('target-price');
-        const targetElectricPriceEl = document.getElementById('target-electric-price');
-        const forcedDischargeEl = document.getElementById('forced-discharge');
-        const forcedChargeEl = document.getElementById('forced-charge');
-        const transactionsBodyEl = document.getElementById('transactions-body');
-        const lastUpdatedEl = document.getElementById('last-updated');
-        const nextUpdateCountdownEl = document.getElementById('next-update-countdown');
-        const todayForecastEl = document.getElementById('today-forecast');
-        const tomorrowForecastEl = document.getElementById('tomorrow-forecast');
-
         const POLLING_INTERVAL = 300000; // 5 minutes
         let timeRemaining = POLLING_INTERVAL / 1000;
 
@@ -144,7 +174,8 @@ function getPriceClass($price) {
         }
 
         function timeSince(date) {
-            let seconds = Math.floor((new Date() - date) / 1000);
+            if (!date) return 'n/a';
+            let seconds = Math.floor((new Date() - new Date(date)) / 1000);
             if (seconds < 5) return 'just now';
             let interval = seconds / 31536000;
             if (interval > 1) return Math.floor(interval) + " years ago";
@@ -158,69 +189,96 @@ function getPriceClass($price) {
             if (interval > 1) return Math.floor(interval) + " minutes ago";
             return Math.floor(seconds) + " seconds ago";
         }
-        
-        function formatTime(datetime) {
-            const date = new Date(datetime);
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
 
         function updateDashboard() {
             fetch('{{ route("dashboard.data") }}')
                 .then(response => response.json())
                 .then(data => {
-                    // Update Prices
+                    // Prices & Status
                     if (data.prices) {
-                        electricityPriceEl.textContent = data.prices.electricityPrice !== null ? parseFloat(data.prices.electricityPrice).toFixed(2) + ' c/kWh' : 'n/a';
-                        electricityPriceEl.className = getPriceClass(data.prices.electricityPrice);
-                        solarFttEl.textContent = data.prices.solarPrice !== null ? parseFloat(data.prices.solarPrice).toFixed(2) + ' c/kWh' : 'n/a';
-                        solarFttEl.className = getPriceClass(data.prices.solarPrice);
-                    } else {
-                        electricityPriceEl.textContent = 'n/a';
-                        electricityPriceEl.className = '';
-                        solarFttEl.textContent = 'n/a';
-                        solarFttEl.className = '';
+                        document.getElementById('electricity-price').textContent = data.prices.electricityPrice !== null ? parseFloat(data.prices.electricityPrice).toFixed(2) + ' c/kWh' : 'n/a';
+                        document.getElementById('electricity-price').className = getPriceClass(data.prices.electricityPrice);
+                        document.getElementById('solar-ftt').textContent = data.prices.solarPrice !== null ? parseFloat(data.prices.solarPrice).toFixed(2) + ' c/kWh' : 'n/a';
+                        document.getElementById('solar-ftt').className = getPriceClass(data.prices.solarPrice);
                     }
-
-                    // Update Battery Settings
                     if (data.battery) {
-                        targetPriceEl.textContent = parseFloat(data.battery.target_price_cents).toFixed(2) + ' Cents';
-                        targetElectricPriceEl.textContent = parseFloat(data.battery.target_electric_price_cents).toFixed(2) + ' Cents';
-                        forcedDischargeEl.textContent = data.battery.forced_discharge ? 'Yes' : 'No';
-                        forcedChargeEl.textContent = data.battery.forced_charge ? 'Yes' : 'No';
+                        document.getElementById('forced-discharge').textContent = data.battery.forced_discharge ? 'Yes' : 'No';
+                        document.getElementById('forced-charge').textContent = data.battery.forced_charge ? 'Yes' : 'No';
+                        document.getElementById('target-price').textContent = parseFloat(data.battery.target_price_cents).toFixed(2) + ' Cents';
+                        document.getElementById('target-electric-price').textContent = parseFloat(data.battery.target_electric_price_cents).toFixed(2) + ' Cents';
                     }
+                    document.getElementById('last-updated').textContent = timeSince(data.last_updated);
 
-                    // Update Last Updated
-                    if (data.last_updated) {
-                        lastUpdatedEl.textContent = timeSince(new Date(data.last_updated));
-                    } else {
-                        lastUpdatedEl.textContent = 'n/a';
-                    }
+                    // SOC & Solar
+                    document.getElementById('soc').textContent = data.soc ? data.soc + '%' : 'n/a';
+                    document.getElementById('remaining-solar').textContent = data.remaining_solar_generation_today ? parseFloat(data.remaining_solar_generation_today).toFixed(2) + ' kWh' : 'n/a';
+                    document.getElementById('forecast-soc').textContent = data.forecast_soc ? data.forecast_soc + '%' : 'n/a';
+                    document.getElementById('today-forecast').textContent = data.todayForecast ? parseFloat(data.todayForecast).toFixed(2) + ' kWh' : '0.00 kWh';
+                    document.getElementById('tomorrow-forecast').textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
 
-                    // Update Solar Forecast
-                    todayForecastEl.textContent = data.todayForecast ? parseFloat(data.todayForecast).toFixed(2) + ' kWh' : '0.00 kWh';
-                    tomorrowForecastEl.textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
-
-                    // Update Transactions
-                    transactionsBodyEl.innerHTML = ''; // Clear existing transactions
-                    if (data.transactions && Object.keys(data.transactions).length > 0) {
-                        for (const date in data.transactions) {
-                            let dateRow = `<tr><td colspan="3" class="text-center font-weight-bold bg-light">${date}</td></tr>`;
-                            transactionsBodyEl.innerHTML += dateRow;
-                            data.transactions[date].forEach(t => {
-                                const row = `<tr>
-                                    <td>${formatTime(t.datetime)}</td>
-                                    <td>${t.action.charAt(0).toUpperCase() + t.action.slice(1)}</td>
-                                    <td class="${getPriceClass(t.price_cents)}">${parseFloat(t.price_cents).toFixed(2)}</td>
-                                </tr>`;
-                                transactionsBodyEl.innerHTML += row;
-                            });
+                    // Sell Strategy
+                    const sellStrategyContainer = document.getElementById('sell-strategy-container');
+                    if (data.sellStrategy) {
+                        if (data.sellStrategy.error) {
+                            sellStrategyContainer.innerHTML = `<p class="text-danger">${data.sellStrategy.error}</p>`;
+                        } else if (data.sellStrategy.message) {
+                            sellStrategyContainer.innerHTML = `<p>${data.sellStrategy.message}</p>`;
+                        } else {
+                            sellStrategyContainer.innerHTML = 
+                                `<p><strong>Total kWh to be sold:</strong> <span id="sell-kwh">${parseFloat(data.sellStrategy.total_kwh_sold || 0).toFixed(2)} kWh</span></p>` +
+                                `<p><strong>Total Revenue:</strong> <span id="sell-revenue">$${(parseFloat(data.sellStrategy.total_revenue || 0) / 100).toFixed(2)}</span></p>` +
+                                `<p><strong>Highest Sell Price:</strong> <span id="highest-sell-price">${parseFloat(data.sellStrategy.highest_sell_price || 0).toFixed(2)} c/kWh</span></p>` +
+                                `<p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">${parseFloat(data.sellStrategy.lowest_sell_price || 0).toFixed(2)} c/kWh</span></p>`;
                         }
                     } else {
-                        const row = `<tr><td colspan="3" class="text-center">No recent transactions found.</td></tr>`;
-                        transactionsBodyEl.innerHTML = row;
+                        sellStrategyContainer.innerHTML = `<p>No data available.</p>`;
                     }
 
-                    // Reset countdown
+                    // Buy Strategy
+                    const buyStrategyContainer = document.getElementById('buy-strategy-container');
+                    if (data.buyStrategy) {
+                        if (data.buyStrategy.error) {
+                            buyStrategyContainer.innerHTML = `<p class="text-danger">${data.buyStrategy.error}</p>`;
+                        } else if (data.buyStrategy.message) {
+                            buyStrategyContainer.innerHTML = `<p>${data.buyStrategy.message}</p>`;
+                        } else {
+                            buyStrategyContainer.innerHTML = 
+                                `<p><strong>kWh to buy:</strong> <span id="buy-kwh">${parseFloat(data.kwh_to_buy || 0).toFixed(2)} kWh</span></p>` +
+                                `<p><strong>Total Cost:</strong> <span id="buy-cost">$${(parseFloat(data.buyStrategy.total_cost || 0) / 100).toFixed(2)}</span></p>` +
+                                `<p><strong>Total Revenue:</strong> <span id="buy-revenue">$${(parseFloat(data.buyStrategy.total_revenue || 0) / 100).toFixed(2)}</span></p>` +
+                                `<p><strong>Estimated Profit:</strong> <span id="buy-profit">$${(parseFloat(data.buyStrategy.estimated_profit || 0) / 100).toFixed(2)}</span></p>` +
+                                `<p><strong>Highest Buy Price:</strong> <span id="highest-buy-price">${parseFloat(data.buyStrategy.highest_buy_price || 0).toFixed(2)} c/kWh</span></p>` +
+                                `<p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">${parseFloat(data.buyStrategy.lowest_sell_price || 0).toFixed(2)} c/kWh</span></p>`;
+                        }
+                    } else {
+                        buyStrategyContainer.innerHTML = `<p>No data available.</p>`;
+                    }
+
+                    // Transaction Log
+                    const transactionLogBody = document.getElementById('transaction-log-body');
+                    transactionLogBody.innerHTML = ''; // Clear existing rows
+                    if (data.transactions && data.transactions.length > 0) {
+                        let currentDate = null;
+                        data.transactions.forEach(transaction => {
+                            const transactionDate = new Date(transaction.datetime).toDateString();
+                            if (currentDate !== transactionDate) {
+                                currentDate = transactionDate;
+                                const dateRow = document.createElement('tr');
+                                dateRow.innerHTML = `<td colspan="3" class="text-center table-secondary"><strong>${new Date(transaction.datetime).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong></td>`;
+                                transactionLogBody.appendChild(dateRow);
+                            }
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${new Date(transaction.datetime).toLocaleTimeString()}</td>
+                                <td>${transaction.action}</td>
+                                <td>${parseFloat(transaction.price_cents).toFixed(2)}</td>
+                            `;
+                            transactionLogBody.appendChild(row);
+                        });
+                    } else {
+                        transactionLogBody.innerHTML = '<tr><td colspan="3" class="text-center">No transactions found.</td></tr>';
+                    }
+
                     timeRemaining = POLLING_INTERVAL / 1000;
                 })
                 .catch(error => console.error('Error fetching dashboard data:', error));
@@ -231,16 +289,12 @@ function getPriceClass($price) {
             if (timeRemaining < 0) timeRemaining = 0;
             const minutes = Math.floor(timeRemaining / 60);
             const seconds = timeRemaining % 60;
-            nextUpdateCountdownEl.textContent = `${minutes}m ${seconds}s`;
+            document.getElementById('next-update-countdown').textContent = `${minutes}m ${seconds}s`;
         }
 
-        // Fetch data every 5 minutes
         setInterval(updateDashboard, POLLING_INTERVAL);
-
-        // Update countdown every second
         setInterval(updateCountdown, 1000);
 
-        // Initial call to populate data
         updateDashboard();
         updateCountdown();
     });

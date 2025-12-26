@@ -46,6 +46,10 @@
                     <input class="form-check-input" type="checkbox" id="forecast_checkbox" value="forecast" checked>
                     <label class="form-check-label" for="forecast_checkbox">Forecast</label>
                 </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="solar_forecast_checkbox" value="solar_forecast" checked>
+                    <label class="form-check-label" for="solar_forecast_checkbox">Solar Forecast</label>
+                </div>
             </div>
         </div>
     </div>
@@ -116,28 +120,40 @@
                 data: formatData(chartData.soc_plans, labels),
                 borderColor: 'rgba(75, 192, 192, 1)',
                 backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                hidden: !document.getElementById('soc_plan_checkbox').checked
+                hidden: !document.getElementById('soc_plan_checkbox').checked,
+                yAxisID: 'y',
             },
             {
                 label: 'SOC Low Plan',
                 data: formatData(chartData.soc_low_plans, labels),
                 borderColor: 'rgba(255, 99, 132, 1)',
                 backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                hidden: !document.getElementById('soc_low_plan_checkbox').checked
+                hidden: !document.getElementById('soc_low_plan_checkbox').checked,
+                yAxisID: 'y',
             },
             {
                 label: 'Current',
                 data: formatData(chartData.current, labels),
                 borderColor: 'rgba(54, 162, 235, 1)',
                 backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                hidden: !document.getElementById('current_checkbox').checked
+                hidden: !document.getElementById('current_checkbox').checked,
+                yAxisID: 'y',
             },
             {
                 label: 'Forecast',
                 data: formatData(chartData.forecast, labels),
                 borderColor: 'rgba(255, 206, 86, 1)',
                 backgroundColor: 'rgba(255, 206, 86, 0.2)',
-                hidden: !document.getElementById('forecast_checkbox').checked
+                hidden: !document.getElementById('forecast_checkbox').checked,
+                yAxisID: 'y',
+            },
+            {
+                label: 'Solar Forecast (kWh)',
+                data: formatData(chartData.solar_forecast, labels),
+                borderColor: 'rgba(153, 102, 255, 1)',
+                backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                hidden: !document.getElementById('solar_forecast_checkbox').checked,
+                yAxisID: 'y1',
             }
         ];
 
@@ -156,12 +172,27 @@
                         }
                     },
                     y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
                         title: {
                             display: true,
                             text: 'SOC (%)'
                         },
                         min: 0,
                         max: 100
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Solar Forecast (kWh)'
+                        },
+                        grid: {
+                            drawOnChartArea: false, // only want the grid lines for one axis to show up
+                        },
                     }
                 }
             }
@@ -184,6 +215,11 @@
         
         document.getElementById('forecast_checkbox').addEventListener('change', function () {
             socChart.data.datasets[3].hidden = !this.checked;
+            socChart.update();
+        });
+
+        document.getElementById('solar_forecast_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[4].hidden = !this.checked;
             socChart.update();
         });
     });

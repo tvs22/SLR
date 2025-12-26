@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\BatterySoc;
+use App\PvYield;
 use App\Services\FoxEssService;
 use App\SolarForecast;
 use Carbon\Carbon;
@@ -17,7 +18,7 @@ class BatterySocController extends Controller
      */
     public function __construct()
     {
-        
+
     }
 
     /**
@@ -32,7 +33,7 @@ class BatterySocController extends Controller
         }
 
         $socData = $socData->orderBy('hour')->get();
-        
+
         $allSocData = BatterySoc::get();
         $chartData = $allSocData->groupBy('type')->map(function ($group, $type) {
             if ($type === 'current') {
@@ -46,7 +47,7 @@ class BatterySocController extends Controller
         $today = Carbon::today()->toDateString();
         $solarForecast = SolarForecast::where('date', $today)->pluck('kwh', 'hour');
         $lastForecastHour = $solarForecast->keys()->last();
-        
+
         $currentSoc = $chartData->get('current', collect());
         $lastKnownSoc = null;
         $lastKnownHour = -1;
@@ -74,8 +75,9 @@ class BatterySocController extends Controller
                 $forecastData->put($hour, round($predictedSoc));
             }
         }
-        
+
         $chartData->put('forecast', $forecastData);
+        $chartData->put('solar_forecast', $solarForecast);
 
         return view('battery_soc.index', compact('socData', 'chartData'));
     }
@@ -173,39 +175,83 @@ class BatterySocController extends Controller
      */
     public function getSoc(FoxEssService $foxEssService)
     {
-        // Delete old 'current' SOC data
-        BatterySoc::where('type', 'current')
-            ->whereDate('created_at', '< ', Carbon::today())
-            ->delete();
+        $errors = [];
+        $successes = [];
 
+        // PV Yield
+        PvYield::whereDate('created_at', '<', Carbon::today())->delete();
         $now = Carbon::now();
         $currentHour = $now->hour;
 
-        // Check if a 'current' SOC value for this hour has already been recorded today.
-        $existingEntry = BatterySoc::where('type', 'current')
+        $existingPvYield = PvYield::where('hour', $currentHour)
+            ->whereDate('created_at', $now->today())
+            ->first();
+
+        if ($existingPvYield) {
+            $errors[] = 'A "current" PV yield value for this hour has already been recorded today.';
+        } else {
+            $reportVars = [
+                "gridConsumption",
+                "loads",
+                "feedin",
+                "generation",
+                "chargeEnergyToTal",
+                "dischargeEnergyToTal",
+            ];
+            $data = $foxEssService->getReport("day", $reportVars);
+            $totalGeneration = 0;
+            if (isset($data['result'])) {
+                foreach ($data['result'] as $report) {
+                    if ($report['variable'] === 'generation' && isset($report['values'])) {
+                        $totalGeneration = array_sum($report['values']);
+                        break;
+                    }
+                }
+            }
+
+            PvYield::create([
+                'date' => $now->toDateString(),
+                'hour' => $currentHour,
+                'kwh' => $totalGeneration,
+            ]);
+            $successes[] = 'PV yield updated successfully.';
+        }
+
+        // Battery SOC
+        BatterySoc::where('type', 'current')
+            ->whereDate('created_at', '<', Carbon::today())
+            ->delete();
+
+        $existingBatterySoc = BatterySoc::where('type', 'current')
             ->where('hour', $currentHour)
             ->whereDate('created_at', $now->today())
             ->first();
 
-        if ($existingEntry) {
-            return redirect()->route('battery_soc.index')
-                            ->with('error', 'A "current" SOC value for this hour has already been recorded today.');
+        if ($existingBatterySoc) {
+            $errors[] = 'A "current" SOC value for this hour has already been recorded today.';
+        } else {
+            $soc = $foxEssService->getSoc();
+
+            if ($soc !== null) {
+                BatterySoc::create([
+                    'type' => 'current',
+                    'hour' => $currentHour,
+                    'soc' => $soc,
+                ]);
+                $successes[] = 'Battery SOC updated successfully.';
+            } else {
+                $errors[] = 'Failed to update Battery SOC.';
+            }
         }
 
-        $soc = $foxEssService->getSoc();
-
-        if ($soc !== null) {
-            BatterySoc::create([
-                'type' => 'current',
-                'hour' => $currentHour,
-                'soc' => $soc,
-            ]);
-
-            return redirect()->route('battery_soc.index')
-                ->with('success', 'Battery SOC updated successfully.');
+        $message = '';
+        if (count($successes) > 0) {
+            $message .= implode(' ', $successes);
+        }
+        if (count($errors) > 0) {
+            $message .= ' ' . implode(' ', $errors);
         }
 
-        return redirect()->route('battery_soc.index')
-            ->with('error', 'Failed to update Battery SOC.');
+        return redirect()->route('battery_soc.index')->with(count($errors) > 0 ? 'error' : 'success', $message);
     }
 }

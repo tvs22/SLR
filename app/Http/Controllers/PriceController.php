@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Services\AmberService;
 use App\Services\FoxEssService;
 use App\SolarForecast;
+use App\BatterySetting;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 
 class PriceController extends Controller
 {
@@ -18,19 +20,24 @@ class PriceController extends Controller
         $minute = $now->minute;
 
         $forecastsToday = SolarForecast::where('date', $today)->orderBy('hour', 'asc')->get();
+        $batterySettings = BatterySetting::latest()->first();
 
+     
         if ($forecastsToday->isEmpty()) {
-            //$soc = $foxEssService->getSoc();
-            $soc= 52;
+            $soc = $foxEssService->getSoc();
             $kwhToBuy = round((100 - $soc) * 0.4193, 2);
-            $predictedPrices = $amberService->predicted_prices(intval($kwhToBuy),'BuyKWH',2,6);
+
+            Cache::put('soc', $soc, now()->addMinutes(30));
+            Cache::put('remaining_solar_generation_today', 0, now()->addMinutes(30));
+            Cache::put('forecast_soc', $soc, now()->addMinutes(30));
+            Cache::put('kwh_to_buy', $kwhToBuy, now()->addMinutes(30));
 
             return response()->json([
                 'soc' => $soc,
                 'remaining_solar_generation_today' => 0,
                 'forecast_soc' => $soc,
                 'kwh_to_buy' => $kwhToBuy,
-                'predicted_prices' => $predictedPrices,
+                'predicted_prices' => $buyStrategy,
             ]);
         }
 
@@ -65,8 +72,7 @@ class PriceController extends Controller
         $remainingGeneration = $totalDayGeneration - $generatedSoFarToday;
         $remainingGeneration = max(0, $remainingGeneration);
 
-        //$soc = $foxEssService->getSoc();
-        $soc=52;
+        $soc = $foxEssService->getSoc();
         $forecastSoc = null;
         $kwhToBuy = null;
 
@@ -78,14 +84,33 @@ class PriceController extends Controller
             $kwhToBuy = round($gapSoc * 0.4193, 2);
         }
 
-        $predictedPrices = $amberService->predicted_prices(intval($kwhToBuy),'SellKWH');
+        Cache::put('soc', $soc, now()->addMinutes(30));
+        Cache::put('remaining_solar_generation_today', round($remainingGeneration, 2), now()->addMinutes(30));
+        Cache::put('forecast_soc', $forecastSoc, now()->addMinutes(30));
+        Cache::put('kwh_to_buy', $kwhToBuy, now()->addMinutes(30));
 
+        // Calculate and cache strategies
+        $buyStrategy = $amberService->calculateOptimalCharging(
+            $kwhToBuy, 
+            $batterySettings->longterm_target_electric_price_cents,
+            $batterySettings->longterm_target_price_cents
+        );
+        Cache::put('buy_strategy', $buyStrategy, now()->addMinutes(30));
+
+        $kwhToSell = ($soc -40)*0.4193;
+        $sellStrategy = $amberService->calculateOptimalDischarging(
+            $kwhToSell,
+            $batterySettings->longterm_target_price_cents
+        );
+        Cache::put('sell_strategy', $sellStrategy, now()->addMinutes(30));
+     
         return response()->json([
             'soc' => $soc,
             'remaining_solar_generation_today' => round($remainingGeneration, 2),
             'forecast_soc' => $forecastSoc,
             'kwh_to_buy' => $kwhToBuy,
-            'predicted_prices' => $predictedPrices,
+            'predicted_prices' => $buyStrategy,
+            'discharge_plan' =>$sellStrategy
         ]);
     }
 }

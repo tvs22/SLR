@@ -6,6 +6,7 @@ use App\BatterySetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use DateTime;
 
 class FoxEssService
 {
@@ -132,6 +133,58 @@ class FoxEssService
             'lang' => $lang,
             'Content-Type' => 'application/json',
         ];
+    }
+    
+    public function getReport(string $reportType, array $variables, DateTime $date = null): array
+    {
+        $token = env('FOX_ESS_API_KEY');
+        $deviceSN = env('FOX_ESS_DEVICE_SN');
+
+        if (!$token || !$deviceSN) {
+            throw new RuntimeException('FOX_ESS_API_KEY or FOX_ESS_DEVICE_SN is not set in .env');
+        }
+
+        if ($date === null) {
+            $date = new DateTime();
+        }
+
+        $params = [
+            'sn' => $deviceSN,
+            'dimension' => $reportType,
+            'variables' => $variables,
+        ];
+
+        if ($reportType === 'day') {
+            $params['year'] = $date->format('Y');
+            $params['month'] = $date->format('m');
+            $params['day'] = $date->format('d');
+        }
+
+        $path = '/op/v0/device/report/query';
+        $body = json_encode($params);
+        $headers = $this->getFoxEssSignature($token, $path, $body);
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->withBody($body, 'application/json')
+                ->post('https://www.foxesscloud.com' . $path);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                if (isset($data['errno']) && $data['errno'] === 0) {
+                    return $data;
+                }
+                Log::error('FoxESS getReport returned an error', ['response' => $data]);
+                throw new RuntimeException('FoxESS getReport returned an error');
+            }
+
+            Log::error('Failed to get report from Fox ESS API', ['response' => $response->body()]);
+            throw new RuntimeException('Failed to get report from Fox ESS API');
+
+        } catch (\Throwable $e) {
+            Log::error('FoxESS getReport error: ' . $e->getMessage());
+            throw new RuntimeException('FoxESS getReport error: ' . $e->getMessage());
+        }
     }
     
     public function getSoc(): ?int

@@ -8,7 +8,6 @@ use Carbon\Carbon;
 class AmberService
 {
     const BATTERY_POWER = 9; // kW
-    const INTERVAL_DURATION = 5; // minutes
 
     public function getLatestPrices(): array
     {
@@ -47,55 +46,19 @@ class AmberService
         ];
     }
 
-    public function predicted_prices(int $kwh, $status = 'BuyKWH', $start_hour = null, $end_hour = null)
+    public function calculateOptimalCharging(int $kwh, float $electricBuyTargetPrice, float $solarTargetSellPrice)
     {
         $apiKey = env('AMBER_ELECTRIC_API_KEY');
         $siteId = env('AMBER_ELECTRIC_SITE_ID');
+        $conProfit = -1000;
 
         if (!$apiKey || !$siteId || $siteId === 'your_site_id') {
             return ['error' => 'API key or site ID is not configured.'];
         }
 
-        $priceField = ($status === 'BuyKWH') ? 'perKwh' : 'spotPerKwh';
-        $sortDirectionIsAsc = ($status === 'BuyKWH');
-        $now = Carbon::now();
-
-        $start_datetime = null;
-        $end_datetime = null;
-        $next = ($status === 'BuyKWH') ? 36 : 60; // Default intervals
-
-        if ($start_hour !== null && $end_hour !== null) {
-            $start_datetime = Carbon::createFromTimeString($start_hour . ':00:00');
-            $end_datetime = Carbon::createFromTimeString($end_hour . ':00:00');
-
-            if ($start_datetime >= $end_datetime) { // Overnight window
-                $end_datetime->addDay();
-            }
-
-            if ($now > $end_datetime) { // If window has passed for today, move to next day
-                $start_datetime->addDay();
-                $end_datetime->addDay();
-            }
-            
-            // If we are already in the window, start from now
-            if($now > $start_datetime) {
-                $start_datetime = $now;
-            }
-
-            $minutesUntilEnd = $now->diffInMinutes($end_datetime, false);
-            if ($minutesUntilEnd > 0) {
-                $next = ceil($minutesUntilEnd / self::INTERVAL_DURATION) + 1; // Calculate intervals needed
-            } else {
-                $next = 0;
-            }
-        }
-
-        if ($next <= 0) {
-            return ['error' => 'The specified time window is in the past or too short.'];
-        }
-
         try {
-            $url = "https://api.amber.com.au/v1/sites/{$siteId}/prices/current?next={$next}&previous=0&resolution=5";
+            // Fetch price forecasts
+            $url = "https://api.amber.com.au/v1/sites/{$siteId}/prices/current?next=72&previous=0&resolution=30"; // Fetching for next 36 hours (72*30min) to be safe
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Accept' => 'application/json',
@@ -110,83 +73,180 @@ class AmberService
                 ->where('channelType', 'general')
                 ->map(function ($interval) {
                     $interval['startTimeCarbon'] = Carbon::parse($interval['startTime']);
-                    $interval['hour'] = $interval['startTimeCarbon']->format('Y-m-d H');
                     return $interval;
                 });
 
-            if ($start_datetime && $end_datetime) {
-                $data = $data->filter(function ($interval) use ($start_datetime, $end_datetime) {
-                    return $interval['startTimeCarbon']->between($start_datetime, $end_datetime, true);
-                });
-            }
+                $buyIntervals = $data
+                ->filter(function ($interval) use ($electricBuyTargetPrice) {
+                    $time = Carbon::parse($interval['nemTime']);
             
-            if ($data->isEmpty()) {
-                return ['error' => 'No pricing data available for the selected window.'];
+                    return $interval['perKwh'] <= $electricBuyTargetPrice
+                        && $time->between(
+                            $time->copy()->setTime(11, 0),
+                            $time->copy()->setTime(14, 0)
+                        );
+                })
+                ->sortBy('perKwh');
+
+                $sellIntervals = $data
+                ->filter(function ($interval) use ($solarTargetSellPrice) {
+                    $hour = Carbon::parse($interval['nemTime'])->hour;
+            
+                    return $interval['spotPerKwh'] >= $solarTargetSellPrice
+                        && $hour >= 16
+                        && $hour < 22;
+                })
+                ->sortByDesc('spotPerKwh');
+            if ($buyIntervals->isEmpty() || $sellIntervals->isEmpty()) {
+                return ['message' => 'No profitable buy or sell windows found.'];
             }
-            $sortedForInitialPrice = $sortDirectionIsAsc ? $data->sortBy($priceField) : $data->sortByDesc($priceField);
-            $initialBestPrice = $sortedForInitialPrice->first()[$priceField];
-            $priceLimit = $initialBestPrice;
-            $finalSelection = [];
-            $finalKwh = 0;
-            $maxPriceAdjustment = 0.50;
-            $priceAdjustmentStep = 0.01;
 
-            while ($finalKwh < $kwh && abs($priceLimit - $initialBestPrice) <= $maxPriceAdjustment) {
-                $potentialIntervals = $data->filter(function ($interval) use ($priceLimit, $priceField, $sortDirectionIsAsc) {
-                    return $sortDirectionIsAsc ? $interval[$priceField] <= $priceLimit : $interval[$priceField] >= $priceLimit;
-                });
+            $totalKwhAcquired = 0;
+            $buyPlan = [];
+            $totalCost = 0;
 
-                $sortedPotentials = $sortDirectionIsAsc ? $potentialIntervals->sortBy($priceField) : $potentialIntervals->sortByDesc($priceField);
-                
-                $currentSelection = [];
-                $hourlyKwh = [];
-                $accumulatedKwh = 0;
-                $intervalsNeeded = ceil($kwh / 0.75);
+            $bestSellPrice = $sellIntervals->first()['spotPerKwh'];
 
-                foreach ($sortedPotentials as $interval) {
-                    if ($accumulatedKwh >= $kwh) {
-                        break;
-                    }
+            // Increase buy target to capture more volume if profitable
+            $potentialProfit = ($bestSellPrice - $buyIntervals->first()['perKwh']) * $kwh;
+            if ($potentialProfit >= $conProfit) {
+                $electricBuyTargetPrice += 1; // increase by 1 cent
+                 $buyIntervals = $data->filter(function ($interval) use ($electricBuyTargetPrice) {
+                    return $interval['perKwh'] <= $electricBuyTargetPrice;
+                })->sortBy('perKwh');
 
-                    $hour = $interval['hour'];
-                    if (!isset($hourlyKwh[$hour])) {
-                        $hourlyKwh[$hour] = 0;
-                    }
+            }
 
-                    if ($hourlyKwh[$hour] < self::BATTERY_POWER) {
-                        $currentSelection[] = $interval;
-                        $hourlyKwh[$hour] += 0.75;
-                        $accumulatedKwh += 0.75;
-                    }
-                }
-                
-                $finalKwh = $accumulatedKwh;
 
-                if ($finalKwh >= $kwh) {
-                    $finalSelection = $currentSelection;
-                    break; 
+            foreach ($buyIntervals as $interval) {
+                if ($totalKwhAcquired >= $kwh) {
+                    break;
                 }
 
-                $priceLimit += $sortDirectionIsAsc ? $priceAdjustmentStep : -$priceAdjustmentStep;
+                $kwhPerInterval = self::BATTERY_POWER * (30 / 60);
+                $buyPlan[] = $interval;
+                $totalKwhAcquired += $kwhPerInterval;
+                $totalCost += $kwhPerInterval * $interval['perKwh'];
             }
 
-            $numIntervals = count($finalSelection);
-            $totalKwhPlanned = $numIntervals * 0.75;
-            
-            $finalPriceUsed = 0;
-            if($numIntervals > 0) {
-                 $finalPriceUsed = $sortDirectionIsAsc ? collect($finalSelection)->max($priceField) : collect($finalSelection)->min($priceField);
+            $totalRevenue = 0;
+            $sellPlan = [];
+            $kwhSold = 0;
+
+            foreach ($sellIntervals as $interval) {
+                if ($kwhSold >= $totalKwhAcquired) {
+                    break;
+                }
+                $kwhPerInterval = self::BATTERY_POWER * (30 / 60);
+                $sellPlan[] = $interval;
+                $kwhSold += $kwhPerInterval;
+                $totalRevenue += $kwhPerInterval * $interval['spotPerKwh'];
             }
+
+            $profit = $totalRevenue - $totalCost;
+
+            if ($profit < $conProfit) {
+                 return ['message' => 'No profitable opportunity found.'];
+            }
+
+            $highestBuyPrice = !empty($buyPlan) ? collect($buyPlan)->max('perKwh') : 0;
+            $lowestSellPrice = !empty($sellPlan) ? collect($sellPlan)->min('spotPerKwh') : 0;
 
             return [
-                'status' => ($status === 'BuyKWH') ? 'Buy' : 'Sell',
-                'final_price_used' => $finalPriceUsed,
-                'total_kwh_planned' => $totalKwhPlanned > $kwh ? $kwh : $totalKwhPlanned,
-                'number_of_intervals_selected' => $numIntervals,
+                'total_kwh_acquired' => $totalKwhAcquired,
+                'total_cost' => $totalCost,
+                'total_revenue' => $totalRevenue,
+                'estimated_profit' => $profit,
+                'highest_buy_price' => $highestBuyPrice,
+                'lowest_sell_price' => $lowestSellPrice,
             ];
 
         } catch (\Exception $e) {
-            Log::error('Error in predicted_prices: ' . $e->getMessage());
+            Log::error('Error in calculateOptimalCharging: ' . $e->getMessage());
+            return ['error' => 'An exception occurred: ' . $e->getMessage()];
+        }
+    }
+
+    public function calculateOptimalDischarging(int $kwh, float $solarTargetSellPrice)
+    {
+        $apiKey = env('AMBER_ELECTRIC_API_KEY');
+        $siteId = env('AMBER_ELECTRIC_SITE_ID');
+
+        if (!$apiKey || !$siteId || $siteId === 'your_site_id') {
+            return ['error' => 'API key or site ID is not configured.'];
+        }
+
+        try {
+            // Fetch price forecasts
+            $url = "https://api.amber.com.au/v1/sites/{$siteId}/prices/current?next=72&previous=0&resolution=30";
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Accept' => 'application/json',
+            ])->get($url);
+
+            if ($response->failed()) {
+                Log::error('Error fetching Amber Electric data: HTTP Status ' . $response->status());
+                return ['error' => 'Failed to fetch data from Amber Electric API.'];
+            }
+
+            $data = collect($response->json())
+                ->where('channelType', 'general')
+                ->map(function ($interval) {
+                    $interval['startTimeCarbon'] = Carbon::parse($interval['startTime']);
+                    return $interval;
+                });
+
+            $sellPlan = [];
+            $kwhSold = 0;
+            $totalRevenue = 0;
+            $adjustedSolarTargetSellPrice = $solarTargetSellPrice;
+
+            // Loop until we have a sell plan or the target price is too low
+            while (empty($sellPlan) && $adjustedSolarTargetSellPrice > 0) {
+                $sellIntervals = $data
+                    ->filter(function ($interval) use ($adjustedSolarTargetSellPrice) {
+                        $hour = Carbon::parse($interval['nemTime'])->hour;
+                        return $interval['spotPerKwh'] >= $adjustedSolarTargetSellPrice
+                            && $hour >= 16
+                            && $hour < 22;
+                    })
+                    ->sortByDesc('spotPerKwh');
+
+                if ($sellIntervals->isEmpty()) {
+                    // Reduce the target price by 1 cent and try again
+                    $adjustedSolarTargetSellPrice -= 1;
+                } else {
+                    foreach ($sellIntervals as $interval) {
+                        if ($kwhSold >= $kwh) {
+                            break;
+                        }
+                        $kwhPerInterval = self::BATTERY_POWER * (30 / 60);
+                        // Ensure we don't sell more than the available kWh
+                        $kwhToSell = min($kwhPerInterval, $kwh - $kwhSold);
+                        
+                        $sellPlan[] = $interval;
+                        $kwhSold += $kwhToSell;
+                        $totalRevenue += $kwhToSell * $interval['spotPerKwh'];
+                    }
+                }
+            }
+
+            if (empty($sellPlan)) {
+                return ['message' => 'No profitable selling opportunities found within the time window.'];
+            }
+
+            $highestSellPrice = !empty($sellPlan) ? collect($sellPlan)->max('spotPerKwh') : 0;
+            $lowestSellPrice = !empty($sellPlan) ? collect($sellPlan)->min('spotPerKwh') : 0;
+
+            return [
+                'total_kwh_sold' => $kwhSold,
+                'total_revenue' => $totalRevenue,
+                'highest_sell_price' => $highestSellPrice,
+                'lowest_sell_price' => $lowestSellPrice,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error in calculateOptimalDischarging: ' . $e->getMessage());
             return ['error' => 'An exception occurred: ' . $e->getMessage()];
         }
     }

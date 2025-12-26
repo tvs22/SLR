@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\BatterySetting;
+use App\BatterySoc;
 use App\BatteryTransaction;
 use App\SolarForecast;
 use Illuminate\Support\Facades\Cache;
@@ -14,38 +15,40 @@ class DashboardController extends Controller
     {
         $this->middleware('auth');
     }
-    
+
     public function index()
     {
-        $todayForecast = SolarForecast::whereDate('date', Carbon::today())->latest('hour')->first();
-        $tomorrowForecast = SolarForecast::whereDate('date', Carbon::tomorrow())->latest('hour')->first();
-
         return view('dashboard', [
             'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
-            'transactions' => BatteryTransaction::latest()->limit(50)->get()->groupBy(function($item) {
-                return Carbon::parse($item->datetime)->format('d-m-Y');
-            }),
             'last_updated' => Cache::get('last_updated'),
-            'todayForecast' => $todayForecast ? $todayForecast->kwh : 0,
-            'tomorrowForecast' => $tomorrowForecast ? $tomorrowForecast->kwh : 0,
+            'todayForecast' => SolarForecast::whereDate('date', Carbon::today())->latest('hour')->first()->kwh ?? 0,
+            'tomorrowForecast' => SolarForecast::whereDate('date', Carbon::tomorrow())->latest('hour')->first()->kwh ?? 0,
+            'soc' => Cache::get('soc'),
+            'remaining_solar_generation_today' => Cache::get('remaining_solar_generation_today'),
+            'forecast_soc' => Cache::get('forecast_soc'),
+            'kwh_to_buy' => Cache::get('kwh_to_buy'),
+            'buyStrategy' => Cache::get('buy_strategy'),
+            'sellStrategy' => Cache::get('sell_strategy'),
+            'transactions' => BatteryTransaction::latest()->take(10)->get(),
         ]);
     }
 
     public function data()
     {
-        $todayForecast = SolarForecast::whereDate('date', Carbon::today())->latest('hour')->first();
-        $tomorrowForecast = SolarForecast::whereDate('date', Carbon::tomorrow())->latest('hour')->first();
-        
         return response()->json([
             'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
-            'transactions' => BatteryTransaction::latest()->limit(50)->get()->groupBy(function($item) {
-                return Carbon::parse($item->datetime)->format('d-m-Y');
-            }),
             'last_updated' => Cache::get('last_updated'),
-            'todayForecast' => $todayForecast ? $todayForecast->kwh : 0,
-            'tomorrowForecast' => $tomorrowForecast ? $tomorrowForecast->kwh : 0,
+            'todayForecast' => SolarForecast::whereDate('date', Carbon::today())->latest('hour')->first()->kwh ?? 0,
+            'tomorrowForecast' => SolarForecast::whereDate('date', Carbon::tomorrow())->latest('hour')->first()->kwh ?? 0,
+            'soc' => Cache::get('soc'),
+            'remaining_solar_generation_today' => Cache::get('remaining_solar_generation_today'),
+            'forecast_soc' => Cache::get('forecast_soc'),
+            'kwh_to_buy' => Cache::get('kwh_to_buy'),
+            'buyStrategy' => Cache::get('buy_strategy'),
+            'sellStrategy' => Cache::get('sell_strategy'),
+            'transactions' => BatteryTransaction::latest()->take(10)->get(),
         ]);
     }
 }
