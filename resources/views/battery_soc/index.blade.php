@@ -152,20 +152,20 @@
                 yAxisID: 'y',
             },
             {
-                label: 'Solar Forecast (kWh)',
+                label: 'Solar Forecast (%)',
                 data: formatData(chartData.solar_forecast, labels),
                 borderColor: 'rgba(153, 102, 255, 1)',
                 backgroundColor: 'rgba(153, 102, 255, 0.2)',
                 hidden: !document.getElementById('solar_forecast_checkbox').checked,
-                yAxisID: 'y1',
+                yAxisID: 'y',
             },
             {
-                label: 'PV Yield (kWh)',
+                label: 'PV Yield (%)',
                 data: formatData(chartData.pv_yield, labels),
                 borderColor: 'rgba(255, 159, 64, 1)',
                 backgroundColor: 'rgba(255, 159, 64, 0.2)',
                 hidden: !document.getElementById('pv_yield_checkbox').checked,
-                yAxisID: 'y1',
+                yAxisID: 'y',
             }
         ];
 
@@ -194,18 +194,6 @@
                         min: 0,
                         max: 100
                     },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        title: {
-                            display: true,
-                            text: 'kWh'
-                        },
-                        grid: {
-                            drawOnChartArea: false, // only want the grid lines for one axis to show up
-                        },
-                    }
                 }
             }
         });
