@@ -118,6 +118,9 @@
             return labels.map(label => dataMap.get(String(label)) || null);
         }
 
+        const solarForecastKwhData = formatData(chartData.solar_forecast_kwh, labels);
+        const pvYieldKwhData = formatData(chartData.pv_yield_kwh, labels);
+
         const datasets = [
             {
                 label: 'SOC Plan',
@@ -176,6 +179,38 @@
                 datasets: datasets
             },
             options: {
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toFixed(2) + ' %';
+                                }
+
+                                const datasetIndex = context.datasetIndex;
+                                const dataIndex = context.dataIndex;
+
+                                if (datasetIndex === 4) { // Solar Forecast (%)
+                                    const kwhValue = solarForecastKwhData[dataIndex];
+                                    if (kwhValue !== null) {
+                                        label += ' (' + kwhValue.toFixed(2) + ' kWh)';
+                                    }
+                                } else if (datasetIndex === 5) { // PV Yield (%)
+                                    const kwhValue = pvYieldKwhData[dataIndex];
+                                    if (kwhValue !== null) {
+                                        label += ' (' + kwhValue.toFixed(2) + ' kWh)';
+                                    }
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         title: {
@@ -193,7 +228,7 @@
                         },
                         min: 0,
                         max: 100
-                    },
+                    }
                 }
             }
         });

@@ -80,6 +80,8 @@ class BatterySocController extends Controller
         $chartData->put('forecast', $forecastData);
         $chartData->put('solar_forecast', $solarForecast->map(fn($kwh) => $kwh / 0.4193));
         $chartData->put('pv_yield', $pvYield->map(fn($kwh) => $kwh / 0.4193));
+        $chartData->put('solar_forecast_kwh', $solarForecast);
+        $chartData->put('pv_yield_kwh', $pvYield);
 
         return view('battery_soc.index', compact('socData', 'chartData'));
     }
