@@ -199,18 +199,18 @@ class BatterySocController extends Controller
                 "generation",
                 "chargeEnergyToTal",
                 "dischargeEnergyToTal",
+                "PVEnergyTotal",
             ];
             $data = $foxEssService->getReport("day", $reportVars);
             $totalGeneration = 0;
             if (isset($data['result'])) {
                 foreach ($data['result'] as $report) {
-                    if ($report['variable'] === 'generation' && isset($report['values'])) {
+                    if ($report['variable'] === 'PVEnergyTotal' && isset($report['values'])) {
                         $totalGeneration = array_sum($report['values']);
                         break;
                     }
                 }
             }
-
             PvYield::create([
                 'date' => $now->toDateString(),
                 'hour' => $currentHour,
