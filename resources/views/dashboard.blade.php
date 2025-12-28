@@ -102,7 +102,7 @@ function getPriceClass($price) {
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5>Buy Plan (5-Min Intervals)</h5>
+                    <h5>Buy Plan (30-Min Intervals)</h5>
                 </div>
                 <div class="card-body" id="buy-plan-container">
                     <table class="table table-striped">
@@ -112,10 +112,35 @@ function getPriceClass($price) {
                                 <th>Price (c/kWh)</th>
                                 <th>kWh to Buy</th>
                                 <th>Cost</th>
-                                <th>kWh Remaining</th>
                             </tr>
                         </thead>
                         <tbody id="buy-plan-body">
+                            {{-- Content will be injected by JS --}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Sell Plan --}}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Sell Plan (30-Min Intervals)</h5>
+                </div>
+                <div class="card-body" id="sell-plan-container">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Price (c/kWh)</th>
+                                <th>kWh to Sell</th>
+                                <th>Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sell-plan-body">
                             {{-- Content will be injected by JS --}}
                         </tbody>
                     </table>
@@ -222,24 +247,51 @@ function getPriceClass($price) {
                         } else if (data.buyStrategy.message) {
                             buyPlanContainer.innerHTML = `<p>${data.buyStrategy.message}</p>`;
                         } else if (data.buyStrategy.buy_plan && data.buyStrategy.buy_plan.length > 0) {
-                            let kwhRemaining = parseFloat(data.kwh_to_buy || 0);
                             data.buyStrategy.buy_plan.forEach(item => {
-                                kwhRemaining -= item.kwh;
                                 const row = document.createElement('tr');
                                 row.innerHTML = `
                                     <td>${item.time}</td>
                                     <td>${item.price.toFixed(2)}</td>
                                     <td>${item.kwh.toFixed(2)}</td>
                                     <td>$${(item.cost / 100).toFixed(2)}</td>
-                                    <td>${kwhRemaining.toFixed(2)}</td>
                                 `;
                                 buyPlanBody.appendChild(row);
                             });
                         } else {
-                            buyPlanBody.innerHTML = '<tr><td colspan="5" class="text-center">No buy plan available.</td></tr>';
+                            buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No buy plan available.</td></tr>';
                         }
                     } else {
-                        buyPlanBody.innerHTML = '<tr><td colspan="5" class="text-center">No data available.</td></tr>';
+                        buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No data available.</td></tr>';
+                    }
+
+                    // Sell Plan
+                    const sellPlanBody = document.getElementById('sell-plan-body');
+                    sellPlanBody.innerHTML = '';
+                    const sellPlans = [];
+                    if (data.evening_sell_strategy && data.evening_sell_strategy.sell_plan) {
+                        sellPlans.push(...data.evening_sell_strategy.sell_plan);
+                    }
+                    if (data.late_night_sell_strategy && data.late_night_sell_strategy.sell_plan) {
+                        sellPlans.push(...data.late_night_sell_strategy.sell_plan);
+                    }
+
+                    if (sellPlans.length > 0) {
+                        sellPlans.sort((a, b) => {
+                            return a.time.localeCompare(b.time);
+                        });
+
+                        sellPlans.forEach(item => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${item.time}</td>
+                                <td>${item.price.toFixed(2)}</td>
+                                <td>${item.kwh.toFixed(2)}</td>
+                                <td>$${(item.revenue / 100).toFixed(2)}</td>
+                            `;
+                            sellPlanBody.appendChild(row);
+                        });
+                    } else {
+                        sellPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No sell plan available.</td></tr>';
                     }
 
                     timeRemaining = POLLING_INTERVAL / 1000;
