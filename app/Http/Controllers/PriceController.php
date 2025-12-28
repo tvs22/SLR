@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BatteryStrategy;
 use App\Services\AmberService;
 use App\Services\FoxEssService;
 use App\SolarForecast;
@@ -9,9 +10,13 @@ use App\BatterySetting;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class PriceController extends Controller
 {
+    private const SOC_TO_KWH_FACTOR = 0.4193;
+    private const CACHE_MINUTES = 30;
+
     public function getPredictedPrices(AmberService $amberService, FoxEssService $foxEssService): JsonResponse
     {
         $now = Carbon::now();
@@ -21,16 +26,15 @@ class PriceController extends Controller
 
         $forecastsToday = SolarForecast::where('date', $today)->orderBy('hour', 'asc')->get();
         $batterySettings = BatterySetting::latest()->first();
-        $socToKwhFactor = 0.4193;
 
         if ($forecastsToday->isEmpty()) {
             $soc = $foxEssService->getSoc();
-            $kwhToBuy = $soc !== null ? round((100 - $soc) * $socToKwhFactor, 2) : 0;
+            $kwhToBuy = $soc !== null ? round((100 - $soc) * self::SOC_TO_KWH_FACTOR, 2) : 0;
 
-            Cache::put('soc', $soc, now()->addMinutes(30));
-            Cache::put('remaining_solar_generation_today', 0, now()->addMinutes(30));
-            Cache::put('forecast_soc', $soc, now()->addMinutes(30));
-            Cache::put('kwh_to_buy', $kwhToBuy, now()->addMinutes(30));
+            Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
+            Cache::put('remaining_solar_generation_today', 0, now()->addMinutes(self::CACHE_MINUTES));
+            Cache::put('forecast_soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
+            Cache::put('kwh_to_buy', $kwhToBuy, now()->addMinutes(self::CACHE_MINUTES));
 
             return response()->json([
                 'soc' => $soc,
@@ -75,67 +79,53 @@ class PriceController extends Controller
         $forecastSoc = null;
         $kwhToBuy = null;
         $buyStrategy = ['buy_plan' => []];
-        $eveningSellStrategy = null;
-        $lateEveningSellStrategy = null;
-        $lateNightSellStrategy = null;
+        $batteryStrategies = $this->getActiveBatteryStrategies();
+        $sellPlans = [];
 
         if ($soc !== null) {
-            $forecastSoc = $soc + ($remainingGeneration / $socToKwhFactor);
+            $forecastSoc = $soc + ($remainingGeneration / self::SOC_TO_KWH_FACTOR);
             $forecastSoc = min(100, round($forecastSoc));
             $gapSoc = 100 - $forecastSoc;
-            $kwhToBuy = round($gapSoc * $socToKwhFactor, 2);
+            $kwhToBuy = round($gapSoc * self::SOC_TO_KWH_FACTOR, 2);
 
-            $kwhAbove75 = ($soc > 75) ? ($soc - 75) * $socToKwhFactor : 0;
-            $kwh75to40 = ($soc > 40) ? (min($soc, 75) - 40) * $socToKwhFactor : 0;
-            $kwhToSellLateNight = ($soc > 30) ? (min($soc, 40) - 30) * $socToKwhFactor : 0;
+            foreach ($batteryStrategies->groupBy('strategy_group') as $group => $strategies) {
+                $bestPlan = null;
+                $bestPlanRevenue = -1;
 
-            // Define strategy windows
-            $eveningStart = $now->copy()->setTime(19, 0);
-            $eveningEnd = $now->copy()->setTime(21, 0);
-            $lateEveningStart = $now->copy()->setTime(21, 0);
-            $lateEveningEnd = $now->copy()->setTime(23, 59, 59);
-            $lateNightStart = $now->copy()->addDay()->setTime(0, 0);
-            $lateNightEnd = $now->copy()->addDay()->setTime(2, 30);
+                foreach ($strategies as $strategy) {
+                    $kwhToSell = $this->calculateKwhToSell($soc, $strategy);
 
-            $guaranteedEveningPlan = null;
-            if ($kwhAbove75 > 0) {
-                $effectiveStart = $now->max($eveningStart);
-                if ($effectiveStart < $eveningEnd) {
-                    $guaranteedEveningPlan = $amberService->calculateOptimalDischarging($kwhAbove75, $batterySettings->longterm_target_price_cents, $effectiveStart, $eveningEnd);
+                    if ($kwhToSell > 0) {
+                        $startTime = Carbon::parse($strategy->sell_start_time);
+                        $endTime = Carbon::parse($strategy->sell_end_time);
+
+                        $effectiveStart = $now->max($startTime);
+
+                        if ($effectiveStart < $endTime) {
+                            $plan = $amberService->calculateOptimalDischarging(
+                                $kwhToSell,
+                                $batterySettings->longterm_target_price_cents,
+                                $effectiveStart,
+                                $endTime
+                            );
+
+                            if ($group && isset($plan['total_revenue'])) {
+                                if ($plan['total_revenue'] > $bestPlanRevenue) {
+                                    $bestPlan = $plan;
+                                    $bestPlanRevenue = $plan['total_revenue'];
+                                }
+                            } else {
+                                $sellPlans[] = $plan;
+                            }
+                        }
+                    }
+                }
+
+                if ($bestPlan) {
+                    $sellPlans[] = $bestPlan;
                 }
             }
 
-            if ($kwh75to40 > 0) {
-                $flexibleEveningPlan = null;
-                $effectiveEveningStart = $now->max($eveningStart);
-                if ($effectiveEveningStart < $eveningEnd) {
-                    $flexibleEveningPlan = $amberService->calculateOptimalDischarging($kwh75to40, $batterySettings->longterm_target_price_cents, $effectiveEveningStart, $eveningEnd);
-                }
-
-                $flexibleLateEveningPlan = null;
-                $effectiveLateEveningStart = $now->max($lateEveningStart);
-                if ($effectiveLateEveningStart < $lateEveningEnd) {
-                    $flexibleLateEveningPlan = $amberService->calculateOptimalDischarging($kwh75to40, $batterySettings->longterm_target_price_cents, $effectiveLateEveningStart, $lateEveningEnd);
-                }
-                
-                if (($flexibleLateEveningPlan['total_revenue'] ?? 0) > ($flexibleEveningPlan['total_revenue'] ?? 0)) {
-                    $eveningSellStrategy = $guaranteedEveningPlan;
-                    $lateEveningSellStrategy = $flexibleLateEveningPlan;
-                } else {
-                    $eveningSellStrategy = $this->mergeSellPlans($guaranteedEveningPlan, $flexibleEveningPlan);
-                    $lateEveningSellStrategy = null;
-                }
-            } else {
-                $eveningSellStrategy = $guaranteedEveningPlan;
-            }
-
-            if ($kwhToSellLateNight > 0) {
-                $effectiveLateNightStart = $now->max($lateNightStart);
-                if ($effectiveLateNightStart < $lateNightEnd) {
-                    $lateNightSellStrategy = $amberService->calculateOptimalDischarging($kwhToSellLateNight, $batterySettings->longterm_target_price_cents, $effectiveLateNightStart, $lateNightEnd);
-                }
-            }
-            
             if ($kwhToBuy > 0) {
                 $buyStrategy = $amberService->calculateOptimalCharging(
                     $kwhToBuy,
@@ -145,55 +135,18 @@ class PriceController extends Controller
             }
         }
 
+        $finalSellPlan = $this->mergeSellPlans(...$sellPlans);
+
         // Cache all the results for polling
-        Cache::put('soc', $soc, now()->addMinutes(30));
-        Cache::put('remaining_solar_generation_today', round($remainingGeneration, 2), now()->addMinutes(30));
-        Cache::put('forecast_soc', $forecastSoc, now()->addMinutes(30));
-        Cache::put('kwh_to_buy', $kwhToBuy, now()->addMinutes(30));
-        Cache::put('buy_strategy', $buyStrategy, now()->addMinutes(30));
-        Cache::put('evening_sell_strategy', $eveningSellStrategy, now()->addMinutes(30));
-        Cache::put('late_evening_sell_strategy', $lateEveningSellStrategy, now()->addMinutes(30));
-        Cache::put('late_night_sell_strategy', $lateNightSellStrategy, now()->addMinutes(30));
+        Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('remaining_solar_generation_today', round($remainingGeneration, 2), now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('forecast_soc', $forecastSoc, now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('kwh_to_buy', $kwhToBuy, now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('buy_strategy', $buyStrategy, now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('sell_strategy', $finalSellPlan, now()->addMinutes(self::CACHE_MINUTES));
 
-        $lowestCurrentSellPrice = 0;
-        $currentSellStrategy = null;
-
-        if ($currentHour >= 19 && $currentHour < 21) {
-            $currentSellStrategy = $eveningSellStrategy;
-        } elseif ($currentHour >= 21 && $currentHour <= 23) {
-            $currentSellStrategy = $lateEveningSellStrategy;
-        } elseif ($currentHour >= 0 && $currentHour < 2) {
-            $currentSellStrategy = $lateNightSellStrategy;
-        }
-
-        if ($currentSellStrategy && isset($currentSellStrategy['lowest_sell_price'])) {
-            $lowestCurrentSellPrice = $currentSellStrategy['lowest_sell_price'];
-        } else {
-            if ($currentHour >= 19 && $currentHour < 21) {
-                if ($lateEveningSellStrategy && isset($lateEveningSellStrategy['lowest_sell_price'])) {
-                    $lowestCurrentSellPrice = $lateEveningSellStrategy['lowest_sell_price'];
-                } elseif ($lateNightSellStrategy && isset($lateNightSellStrategy['lowest_sell_price'])) {
-                    $lowestCurrentSellPrice = $lateNightSellStrategy['lowest_sell_price'];
-                }
-            } elseif ($currentHour >= 21 && $currentHour <= 23) {
-                if ($lateNightSellStrategy && isset($lateNightSellStrategy['lowest_sell_price'])) {
-                    $lowestCurrentSellPrice = $lateNightSellStrategy['lowest_sell_price'];
-                }
-            }
-        }
-        
-        if (($currentHour > 21 && $soc > 75) || ($currentHour > 23 && $soc > 40)) {
-            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
-            $batterySettings->save();
-        } elseif ($lowestCurrentSellPrice > $batterySettings->longterm_target_price_cents) {
-            $batterySettings->target_price_cents = $lowestCurrentSellPrice;
-            $batterySettings->save();
-        }
-
-        if ($currentHour >= 2 && $currentHour < 3 && $soc > 30) {
-            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
-            $batterySettings->save();
-        }
+        $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $currentHour);
+        $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour);
 
         // Return the fresh data directly
         return response()->json([
@@ -202,13 +155,71 @@ class PriceController extends Controller
             'forecast_soc' => $forecastSoc,
             'kwh_to_buy' => $kwhToBuy,
             'buyStrategy' => $buyStrategy,
-            'evening_sell_strategy' => $eveningSellStrategy,
-            'late_evening_sell_strategy' => $lateEveningSellStrategy,
-            'late_night_sell_strategy' => $lateNightSellStrategy,
+            'sell_strategy' => $finalSellPlan,
             'lowest_current_sell_price' => $lowestCurrentSellPrice,
         ]);
     }
-    
+
+    private function getActiveBatteryStrategies()
+    {
+        return BatteryStrategy::where('is_active', true)->get();
+    }
+
+    private function calculateKwhToSell($soc, $strategy)
+    {
+        if ($soc > $strategy->soc_lower_bound) {
+            $socRange = min($soc, $strategy->soc_upper_bound) - $strategy->soc_lower_bound;
+            return $socRange * self::SOC_TO_KWH_FACTOR;
+        }
+
+        return 0;
+    }
+
+    private function getLowestCurrentSellPrice($sellPlan, $currentHour)
+    {
+        if (!$sellPlan || !isset($sellPlan['sell_plan'])) {
+            return 0;
+        }
+
+        $lowestPrice = 0;
+
+        foreach ($sellPlan['sell_plan'] as $slot) {
+            $slotHour = Carbon::parse($slot['time'])->hour;
+            if ($slotHour >= $currentHour) {
+                if ($lowestPrice == 0 || $slot['price'] < $lowestPrice) {
+                    $lowestPrice = $slot['price'];
+                }
+            }
+        }
+
+        return $lowestPrice;
+    }
+
+    private function updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour)
+    {
+        $strategies = $this->getActiveBatteryStrategies();
+        $socHigh = $strategies->firstWhere('name', 'Evening Peak')->soc_lower_bound;
+        $socMedium = $strategies->firstWhere('name', 'Flexible Evening')->soc_lower_bound;
+        $socLow = $strategies->firstWhere('name', 'Overnight')->soc_lower_bound;
+
+        $lateEveningStartHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Late')->sell_start_time)->hour;
+        $lateEveningEndHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Late')->sell_end_time)->hour;
+        $lateNightEndHour = Carbon::parse($strategies->firstWhere('name', 'Overnight')->sell_end_time)->hour;
+
+        if (($currentHour > $lateEveningStartHour && $soc > $socHigh) || ($currentHour > $lateEveningEndHour && $soc > $socMedium)) {
+            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
+            $batterySettings->save();
+        } elseif ($lowestCurrentSellPrice > $batterySettings->longterm_target_price_cents) {
+            $batterySettings->target_price_cents = $lowestCurrentSellPrice;
+            $batterySettings->save();
+        }
+
+        if ($currentHour >= $lateNightEndHour && $currentHour < 3 && $soc > $socLow) {
+            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
+            $batterySettings->save();
+        }
+    }
+
     /**
      * Merges two or more sell plans into a single plan.
      *
@@ -230,7 +241,7 @@ class PriceController extends Controller
             }
             return null;
         }
-        
+
         if (count($nonNullPlans) === 1) {
             return array_pop($nonNullPlans);
         }
@@ -258,14 +269,14 @@ class PriceController extends Controller
             if ($plan['lowest_sell_price'] < $mergedPlan['lowest_sell_price']) {
                 $mergedPlan['lowest_sell_price'] = $plan['lowest_sell_price'];
             }
-            
+
             $mergedPlan['sell_plan'] = array_merge($mergedPlan['sell_plan'], $plan['sell_plan']);
         }
 
         if ($mergedPlan['lowest_sell_price'] === PHP_INT_MAX) {
             $mergedPlan['lowest_sell_price'] = 0;
         }
-        
+
         // Sort the final combined plan by time
         usort($mergedPlan['sell_plan'], function ($a, $b) {
             return strcmp($a['time'], $b['time']);

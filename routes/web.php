@@ -37,4 +37,5 @@ Route::group(['middleware' => ['auth']], function () {
     Route::resource('solar-forecasts', 'App\Http\Controllers\SolarForecastController');
     Route::resource('pv-yields', 'App\Http\Controllers\PvYieldController');
     Route::get('/dashboard/data', 'App\Http\Controllers\DashboardController@data')->name('dashboard.data');
+    Route::resource('battery-strategies', 'App\Http\Controllers\BatteryStrategyController');
 });

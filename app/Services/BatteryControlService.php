@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\BatterySetting;
 use App\BatteryTransaction;
+use App\Models\BatteryStrategy;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 class BatteryControlService
@@ -17,17 +19,29 @@ class BatteryControlService
             return;
         }
 
+        $batteryStrategies = BatteryStrategy::whereIn('name', ['Evening Peak', 'Overnight'])->get()->keyBy('name');
+        $eveningPeakStrategy = $batteryStrategies->get('Evening Peak');
+        $overnightStrategy = $batteryStrategies->get('Overnight');
+
         // Solar sell / force discharge logic
         $currentSolarPrice = $prices['solarPrice'];
         $targetSolarPrice = $battery->target_price_cents;
         $shouldForceDischarge = $currentSolarPrice > $targetSolarPrice;
 
         if ($battery->forced_discharge !== $shouldForceDischarge) {
-            $dischargeStartHour = (int) substr($battery->discharge_start_time, 0, 2);
+ 
+            if ($eveningPeakStrategy) {
+                $dischargeStartHour = Carbon::parse($eveningPeakStrategy->sell_start_time)->hour;
+            }
 
             $currentHour = now()->hour;
-            if ($currentHour >= 0 && $currentHour < 3) {
-                $dischargeStartHour = 0;
+            if ($overnightStrategy) {
+                $overnightStartHour = Carbon::parse($overnightStrategy->sell_start_time)->hour;
+                $overnightEndHour = Carbon::parse($overnightStrategy->sell_end_time)->hour;
+
+                if ($currentHour >= $overnightStartHour && $currentHour <= $overnightEndHour) {
+                    $dischargeStartHour = $overnightStartHour;
+                }
             }
 
             app(FoxEssService::class)->setForcedChargeorDischarge($shouldForceDischarge, $dischargeStartHour, 'ForceDischarge');
@@ -47,7 +61,11 @@ class BatteryControlService
         $shouldForceCharge = $currentElectricPrice < $targetElectricPrice;
 
         if ($battery->forced_charge !== $shouldForceCharge) {
-            $chargeStartHour = (int) substr($battery->charge_start_time, 0, 2);
+            $chargeStrategy = $batteryStrategies->get('Evening Peak');
+            $chargeStartHour = 0; // Default to 00:00 if not found
+            if ($chargeStrategy) {
+                $chargeStartHour = Carbon::parse($chargeStrategy->buy_start_time)->hour;
+            }
             app(FoxEssService::class)->setForcedChargeorDischarge($shouldForceCharge, $chargeStartHour, 'ForceCharge');
 
             $battery->update(['forced_charge' => $shouldForceCharge]);

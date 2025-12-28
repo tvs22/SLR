@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             BatterySettingsSeeder::class,
             BatterySocSeeder::class,
+            BatteryStrategySeeder::class,
         ]);
     }
 }
