@@ -61,103 +61,73 @@ function getPriceClass($price) {
             </div>
         </div>
 
-        {{-- Sell Strategy --}}
-        <div class="col-lg-3 col-md-6 mb-4">
+        {{-- Sell Strategies --}}
+        <div class="col-lg-6 col-md-12 mb-4">
             <div class="card h-100">
                 <div class="card-header">
-                    <h5>Sell Strategy</h5>
-                    <small class="text-muted">Optimal times to sell back to the grid</small>
+                    <h5>Sell Strategies</h5>
                 </div>
-                <div class="card-body" id="sell-strategy-container">
-                    @if ($sellStrategy && isset($sellStrategy['error']))
-                        <p class="text-danger">{{ $sellStrategy['error'] }}</p>
-                    @elseif ($sellStrategy && isset($sellStrategy['message']))
-                        <p>{{ $sellStrategy['message'] }}</p>
-                    @elseif ($sellStrategy)
-                        <p><strong>Total kWh to be sold:</strong> <span id="sell-kwh">{{ number_format($sellStrategy['total_kwh_sold'] ?? 0, 2) }} kWh</span></p>
-                        <p><strong>Total Revenue:</strong> <span id="sell-revenue">${{ number_format(($sellStrategy['total_revenue'] ?? 0) / 100, 2) }}</span></p>
-                        <p><strong>Highest Sell Price:</strong> <span id="highest-sell-price">{{ number_format($sellStrategy['highest_sell_price'] ?? 0, 2) }} c/kWh</span></p>
-                        <p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">{{ number_format($sellStrategy['lowest_sell_price'] ?? 0, 2) }} c/kWh</span></p>
-                    @else
-                        <p>No data available.</p>
-                    @endif
-                </div>
-            </div>
-        </div>
-
-        {{-- Buy Strategy --}}
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header">
-                    <h5>Buy Strategy</h5>
-                    <small class="text-muted">Optimal times to charge from the grid</small>
-                </div>
-                <div class="card-body" id="buy-strategy-container">
-                    @if ($buyStrategy && isset($buyStrategy['error']))
-                        <p class="text-danger">{{ $buyStrategy['error'] }}</p>
-                    @elseif ($buyStrategy && isset($buyStrategy['message']))
-                        <p>{{ $buyStrategy['message'] }}</p>
-                    @elseif ($buyStrategy)
-                        <p><strong>kWh to buy:</strong> <span id="buy-kwh">{{ number_format($kwh_to_buy ?? 0, 2) }} kWh</span></p>
-                        <p><strong>Total Cost:</strong> <span id="buy-cost">${{ number_format(($buyStrategy['total_cost'] ?? 0) / 100, 2) }}</span></p>
-                        <p><strong>Total Revenue:</strong> <span id="buy-revenue">${{ number_format(($buyStrategy['total_revenue'] ?? 0) / 100, 2) }}</span></p>
-                        <p><strong>Estimated Profit:</strong> <span id="buy-profit">${{ number_format(($buyStrategy['estimated_profit'] ?? 0) / 100, 2) }}</span></p>
-                        <p><strong>Highest Buy Price:</strong> <span id="highest-buy-price">{{ number_format($buyStrategy['highest_buy_price'] ?? 0, 2) }} c/kWh</span></p>
-                        <p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">{{ number_format($buyStrategy['lowest_sell_price'] ?? 0, 2) }} c/kWh</span></p>
-                    @else
-                        <p>No data available.</p>
-                    @endif
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-header bg-danger text-white">
+                                    <h6>Evening Sell (19:00 - 23:59)</h6>
+                                    <small>Sell down to 40% SOC</small>
+                                </div>
+                                <div class="card-body" id="evening-sell-strategy-container">
+                                    {{-- Content will be injected by JS --}}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-warning text-dark">
+                                    <h6>Late Night Sell (00:00 - 02:30)</h6>
+                                    <small>Sell down to 30% SOC</small>
+                                </div>
+                                <div class="card-body" id="late-night-sell-strategy-container">
+                                    {{-- Content will be injected by JS --}}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    {{-- Transaction Log --}}
+    {{-- Buy Plan --}}
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5>Recent Transactions</h5>
-                    <small class="text-muted">The last 10 transactions recorded</small>
+                    <h5>Buy Plan (5-Min Intervals)</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body" id="buy-plan-container">
                     <table class="table table-striped">
                         <thead>
                             <tr>
                                 <th>Time</th>
-                                <th>Action</th>
                                 <th>Price (c/kWh)</th>
+                                <th>kWh to Buy</th>
+                                <th>Cost</th>
+                                <th>kWh Remaining</th>
                             </tr>
                         </thead>
-                        <tbody id="transaction-log-body">
-                            @php
-                                $currentDate = null;
-                            @endphp
-                            @if ($transactions && $transactions->count() > 0)
-                                @foreach ($transactions as $transaction)
-                                    @if ($currentDate !== $transaction->datetime->format('Y-m-d'))
-                                        @php
-                                            $currentDate = $transaction->datetime->format('Y-m-d');
-                                        @endphp
-                                        <tr>
-                                            <td colspan="3" class="text-center table-secondary"><strong>{{ $transaction->datetime->format('l, F j, Y') }}</strong></td>
-                                        </tr>
-                                    @endif
-                                    <tr>
-                                        <td>{{ $transaction->datetime->format('H:i:s') }}</td>
-                                        <td>{{ $transaction->action }}</td>
-                                        <td>{{ number_format($transaction->price_cents, 2) }}</td>
-                                    </tr>
-                                @endforeach
-                            @else
-                                <tr>
-                                    <td colspan="3" class="text-center">No transactions found.</td>
-                                </tr>
-                            @endif
+                        <tbody id="buy-plan-body">
+                            {{-- Content will be injected by JS --}}
                         </tbody>
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+
+    {{-- Battery Transactions --}}
+    <div class="row mt-4">
+        <div class="col-12">
+            @include('partials.battery-transactions')
         </div>
     </div>
 </div>
@@ -219,67 +189,57 @@ function getPriceClass($price) {
                     document.getElementById('today-forecast').textContent = data.todayForecast ? parseFloat(data.todayForecast).toFixed(2) + ' kWh' : '0.00 kWh';
                     document.getElementById('tomorrow-forecast').textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
 
-                    // Sell Strategy
-                    const sellStrategyContainer = document.getElementById('sell-strategy-container');
-                    if (data.sellStrategy) {
-                        if (data.sellStrategy.error) {
-                            sellStrategyContainer.innerHTML = `<p class="text-danger">${data.sellStrategy.error}</p>`;
-                        } else if (data.sellStrategy.message) {
-                            sellStrategyContainer.innerHTML = `<p>${data.sellStrategy.message}</p>`;
+                    // Sell Strategies
+                    function updateSellStrategy(strategyName, containerId) {
+                        const container = document.getElementById(containerId);
+                        const strategy = data[strategyName];
+                        if (strategy && Object.keys(strategy).length > 0) {
+                            if (strategy.error) {
+                                container.innerHTML = `<p class="text-danger">${strategy.error}</p>`;
+                            } else if (strategy.message) {
+                                container.innerHTML = `<p>${strategy.message}</p>`;
+                            } else {
+                                container.innerHTML = 
+                                    `<p><strong>Total kWh to sell:</strong> <span>${parseFloat(strategy.total_kwh_sold || 0).toFixed(2)} kWh</span></p>` +
+                                    `<p><strong>Total Revenue:</strong> <span>$${(parseFloat(strategy.total_revenue || 0) / 100).toFixed(2)}</span></p>` +
+                                    `<p><strong>Highest Sell Price:</strong> <span>${parseFloat(strategy.highest_sell_price || 0).toFixed(2)} c/kWh at ${strategy.highest_sell_price_time || 'n/a'}</span></p>` +
+                                    `<p><strong>Lowest Sell Price:</strong> <span>${parseFloat(strategy.lowest_sell_price || 0).toFixed(2)} c/kWh</span></p>`;
+                            }
                         } else {
-                            sellStrategyContainer.innerHTML = 
-                                `<p><strong>Total kWh to be sold:</strong> <span id="sell-kwh">${parseFloat(data.sellStrategy.total_kwh_sold || 0).toFixed(2)} kWh</span></p>` +
-                                `<p><strong>Total Revenue:</strong> <span id="sell-revenue">$${(parseFloat(data.sellStrategy.total_revenue || 0) / 100).toFixed(2)}</span></p>` +
-                                `<p><strong>Highest Sell Price:</strong> <span id="highest-sell-price">${parseFloat(data.sellStrategy.highest_sell_price || 0).toFixed(2)} c/kWh</span></p>` +
-                                `<p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">${parseFloat(data.sellStrategy.lowest_sell_price || 0).toFixed(2)} c/kWh</span></p>`;
+                            container.innerHTML = `<p>No data available.</p>`;
                         }
-                    } else {
-                        sellStrategyContainer.innerHTML = `<p>No data available.</p>`;
                     }
+                    updateSellStrategy('evening_sell_strategy', 'evening-sell-strategy-container');
+                    updateSellStrategy('late_night_sell_strategy', 'late-night-sell-strategy-container');
 
-                    // Buy Strategy
-                    const buyStrategyContainer = document.getElementById('buy-strategy-container');
+                    // Buy Plan
+                    const buyPlanContainer = document.getElementById('buy-plan-container');
+                    const buyPlanBody = document.getElementById('buy-plan-body');
+                    buyPlanBody.innerHTML = ''; 
                     if (data.buyStrategy) {
                         if (data.buyStrategy.error) {
-                            buyStrategyContainer.innerHTML = `<p class="text-danger">${data.buyStrategy.error}</p>`;
+                            buyPlanContainer.innerHTML = `<p class="text-danger">${data.buyStrategy.error}</p>`;
                         } else if (data.buyStrategy.message) {
-                            buyStrategyContainer.innerHTML = `<p>${data.buyStrategy.message}</p>`;
+                            buyPlanContainer.innerHTML = `<p>${data.buyStrategy.message}</p>`;
+                        } else if (data.buyStrategy.buy_plan && data.buyStrategy.buy_plan.length > 0) {
+                            let kwhRemaining = parseFloat(data.kwh_to_buy || 0);
+                            data.buyStrategy.buy_plan.forEach(item => {
+                                kwhRemaining -= item.kwh;
+                                const row = document.createElement('tr');
+                                row.innerHTML = `
+                                    <td>${item.time}</td>
+                                    <td>${item.price.toFixed(2)}</td>
+                                    <td>${item.kwh.toFixed(2)}</td>
+                                    <td>$${(item.cost / 100).toFixed(2)}</td>
+                                    <td>${kwhRemaining.toFixed(2)}</td>
+                                `;
+                                buyPlanBody.appendChild(row);
+                            });
                         } else {
-                            buyStrategyContainer.innerHTML = 
-                                `<p><strong>kWh to buy:</strong> <span id="buy-kwh">${parseFloat(data.kwh_to_buy || 0).toFixed(2)} kWh</span></p>` +
-                                `<p><strong>Total Cost:</strong> <span id="buy-cost">$${(parseFloat(data.buyStrategy.total_cost || 0) / 100).toFixed(2)}</span></p>` +
-                                `<p><strong>Total Revenue:</strong> <span id="buy-revenue">$${(parseFloat(data.buyStrategy.total_revenue || 0) / 100).toFixed(2)}</span></p>` +
-                                `<p><strong>Estimated Profit:</strong> <span id="buy-profit">$${(parseFloat(data.buyStrategy.estimated_profit || 0) / 100).toFixed(2)}</span></p>` +
-                                `<p><strong>Highest Buy Price:</strong> <span id="highest-buy-price">${parseFloat(data.buyStrategy.highest_buy_price || 0).toFixed(2)} c/kWh</span></p>` +
-                                `<p><strong>Lowest Sell Price:</strong> <span id="lowest-sell-price">${parseFloat(data.buyStrategy.lowest_sell_price || 0).toFixed(2)} c/kWh</span></p>`;
+                            buyPlanBody.innerHTML = '<tr><td colspan="5" class="text-center">No buy plan available.</td></tr>';
                         }
                     } else {
-                        buyStrategyContainer.innerHTML = `<p>No data available.</p>`;
-                    }
-
-                    // Transaction Log
-                    const transactionLogBody = document.getElementById('transaction-log-body');
-                    transactionLogBody.innerHTML = ''; // Clear existing rows
-                    if (data.transactions && data.transactions.length > 0) {
-                        let currentDate = null;
-                        data.transactions.forEach(transaction => {
-                            const transactionDate = new Date(transaction.datetime).toDateString();
-                            if (currentDate !== transactionDate) {
-                                currentDate = transactionDate;
-                                const dateRow = document.createElement('tr');
-                                dateRow.innerHTML = `<td colspan="3" class="text-center table-secondary"><strong>${new Date(transaction.datetime).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong></td>`;
-                                transactionLogBody.appendChild(dateRow);
-                            }
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${new Date(transaction.datetime).toLocaleTimeString()}</td>
-                                <td>${transaction.action}</td>
-                                <td>${parseFloat(transaction.price_cents).toFixed(2)}</td>
-                            `;
-                            transactionLogBody.appendChild(row);
-                        });
-                    } else {
-                        transactionLogBody.innerHTML = '<tr><td colspan="3" class="text-center">No transactions found.</td></tr>';
+                        buyPlanBody.innerHTML = '<tr><td colspan="5" class="text-center">No data available.</td></tr>';
                     }
 
                     timeRemaining = POLLING_INTERVAL / 1000;
@@ -305,8 +265,14 @@ function getPriceClass($price) {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 }
             })
+            .then(response => response.json())
+            .then(data => {
+                updateDashboard(); 
+            })
             .finally(() => {
-                location.reload();
+                const button = document.getElementById('predict-prices-btn');
+                button.disabled = false;
+                button.innerHTML = 'Predict Prices';
             });
         });
 

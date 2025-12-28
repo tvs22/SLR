@@ -29,8 +29,9 @@ class DashboardController extends Controller
             'forecast_soc' => Cache::get('forecast_soc'),
             'kwh_to_buy' => Cache::get('kwh_to_buy'),
             'buyStrategy' => Cache::get('buy_strategy'),
-            'sellStrategy' => Cache::get('sell_strategy'),
-            'transactions' => BatteryTransaction::latest()->take(10)->get(),
+            'evening_sell_strategy' => Cache::get('evening_sell_strategy'),
+            'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),
+            'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
         ]);
     }
 
@@ -47,8 +48,9 @@ class DashboardController extends Controller
             'forecast_soc' => Cache::get('forecast_soc'),
             'kwh_to_buy' => Cache::get('kwh_to_buy'),
             'buyStrategy' => Cache::get('buy_strategy'),
-            'sellStrategy' => Cache::get('sell_strategy'),
-            'transactions' => BatteryTransaction::latest()->take(10)->get(),
+            'evening_sell_strategy' => Cache::get('evening_sell_strategy'),
+            'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),
+            'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
         ]);
     }
 }
