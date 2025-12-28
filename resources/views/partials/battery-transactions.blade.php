@@ -8,7 +8,6 @@
                 <tr>
                     <th scope="col">Time</th>
                     <th scope="col">Price (cents)</th>
-                    <th scope="col">kWh</th>
                     <th scope="col">Action</th>
                 </tr>
             </thead>
@@ -25,15 +24,15 @@
                             $currentDate = $transactionDate;
                         @endphp
                         <tr>
-                            <td colspan="4" class="text-center bg-light">
+                            <td colspan="3" class="text-center bg-light py-2">
                                 <strong>{{ \Carbon\Carbon::parse($transaction->datetime)->format('l, j F Y') }}</strong>
                             </td>
                         </tr>
                     @endif
                     <tr>
                         <td>{{ \Carbon\Carbon::parse($transaction->datetime)->format('H:i') }}</td>
+                        <td>{{ $transaction->datetime }}</td>
                         <td>{{ $transaction->price_cents }}</td>
-                        <td>{{ number_format($transaction->kwh, 2) }}</td>
                         <td>{{ $transaction->action }}</td>
                     </tr>
                 @endforeach

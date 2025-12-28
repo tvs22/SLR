@@ -325,9 +325,7 @@ function getPriceClass($price) {
                                 <tr>
                                     <th>Time</th>
                                     <th>Type</th>
-                                    <th>Amount (kWh)</th>
                                     <th>Price (c/kWh)</th>
-                                    <th>Cost/Revenue</th>
                                 </tr>
                             </thead>
                             <tbody>`;
@@ -335,11 +333,9 @@ function getPriceClass($price) {
                     transactionsHtml += `
                                 <tr>
                                     <td>${timeSince(item.created_at)}</td>
-                                    <td>${item.type}</td>
-                                    <td>${parseFloat(item.amount_kwh).toFixed(2)}</td>
-                                    <td>${parseFloat(item.price_per_kwh).toFixed(2)}</td>
-                                    <td>$${(parseFloat(item.cost_or_revenue) / 100).toFixed(2)}</td>
-                                </tr>
+                                    <td>${item.action}</td>
+                                    <td>${parseFloat(item.price_cents).toFixed(2)}</td>
+                                 </tr>
                     `;
                 });
                 transactionsHtml += `

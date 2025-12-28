@@ -143,7 +143,7 @@ class PriceController extends Controller
             $currentSellStrategy = $eveningSellStrategy;
         } elseif ($currentHour >= 21 && $currentHour <= 23) {
             $currentSellStrategy = $lateEveningSellStrategy;
-        } elseif ($currentHour >= 0 && $currentHour < 3) {
+        } elseif ($currentHour >= 0 && $currentHour < 2) {
             $currentSellStrategy = $lateNightSellStrategy;
         }
 
@@ -168,6 +168,11 @@ class PriceController extends Controller
             $batterySettings->save();
         } elseif ($lowestCurrentSellPrice > $batterySettings->longterm_target_price_cents) {
             $batterySettings->target_price_cents = $lowestCurrentSellPrice;
+            $batterySettings->save();
+        }
+
+        if ($currentHour >= 2 && $currentHour < 3 && $soc > 30) {
+            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
             $batterySettings->save();
         }
 
