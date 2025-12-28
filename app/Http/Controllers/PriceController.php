@@ -149,9 +149,21 @@ class PriceController extends Controller
 
         if ($currentSellStrategy && isset($currentSellStrategy['lowest_sell_price'])) {
             $lowestCurrentSellPrice = $currentSellStrategy['lowest_sell_price'];
+        } else {
+            if ($currentHour >= 19 && $currentHour < 21) {
+                if ($lateEveningSellStrategy && isset($lateEveningSellStrategy['lowest_sell_price'])) {
+                    $lowestCurrentSellPrice = $lateEveningSellStrategy['lowest_sell_price'];
+                } elseif ($lateNightSellStrategy && isset($lateNightSellStrategy['lowest_sell_price'])) {
+                    $lowestCurrentSellPrice = $lateNightSellStrategy['lowest_sell_price'];
+                }
+            } elseif ($currentHour >= 21 && $currentHour <= 23) {
+                if ($lateNightSellStrategy && isset($lateNightSellStrategy['lowest_sell_price'])) {
+                    $lowestCurrentSellPrice = $lateNightSellStrategy['lowest_sell_price'];
+                }
+            }
         }
         
-        if (($currentHour > 21 && $soc > 75) || ($currentHour >= 23 && $soc > 40)) {
+        if (($currentHour > 21 && $soc > 75) || ($currentHour > 23 && $soc > 40)) {
             $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
             $batterySettings->save();
         } elseif ($lowestCurrentSellPrice > $batterySettings->longterm_target_price_cents) {

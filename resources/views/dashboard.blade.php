@@ -163,8 +163,8 @@ function getPriceClass($price) {
 
     {{-- Battery Transactions --}}
     <div class="row mt-4">
-        <div class="col-12">
-            @include('partials.battery-transactions')
+        <div class="col-12" id="battery-transactions-container">
+            {{-- Content will be injected by JS --}}
         </div>
     </div>
 </div>
@@ -309,6 +309,56 @@ function getPriceClass($price) {
                 });
             } else {
                 sellPlanBody.innerHTML = '<tr><td colspan="5" class="text-center">No sell plan available.</td></tr>';
+            }
+
+            // Battery Transactions
+            const batteryTransactionsContainer = document.getElementById('battery-transactions-container');
+            if (data.batteryTransactions && data.batteryTransactions.length > 0) {
+                let transactionsHtml = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Recent Battery Transactions</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Type</th>
+                                    <th>Amount (kWh)</th>
+                                    <th>Price (c/kWh)</th>
+                                    <th>Cost/Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                data.batteryTransactions.forEach(item => {
+                    transactionsHtml += `
+                                <tr>
+                                    <td>${timeSince(item.created_at)}</td>
+                                    <td>${item.type}</td>
+                                    <td>${parseFloat(item.amount_kwh).toFixed(2)}</td>
+                                    <td>${parseFloat(item.price_per_kwh).toFixed(2)}</td>
+                                    <td>$${(parseFloat(item.cost_or_revenue) / 100).toFixed(2)}</td>
+                                </tr>
+                    `;
+                });
+                transactionsHtml += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+                batteryTransactionsContainer.innerHTML = transactionsHtml;
+            } else {
+                batteryTransactionsContainer.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Recent Battery Transactions</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>No recent battery transactions.</p>
+                    </div>
+                </div>
+                `;
             }
 
             timeRemaining = POLLING_INTERVAL / 1000;
