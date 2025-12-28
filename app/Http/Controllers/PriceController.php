@@ -136,6 +136,29 @@ class PriceController extends Controller
         Cache::put('late_evening_sell_strategy', $lateEveningSellStrategy, now()->addMinutes(30));
         Cache::put('late_night_sell_strategy', $lateNightSellStrategy, now()->addMinutes(30));
 
+        $lowestCurrentSellPrice = 0;
+        $currentSellStrategy = null;
+
+        if ($currentHour >= 19 && $currentHour < 21) {
+            $currentSellStrategy = $eveningSellStrategy;
+        } elseif ($currentHour >= 21 && $currentHour <= 23) {
+            $currentSellStrategy = $lateEveningSellStrategy;
+        } elseif ($currentHour >= 0 && $currentHour < 3) {
+            $currentSellStrategy = $lateNightSellStrategy;
+        }
+
+        if ($currentSellStrategy && isset($currentSellStrategy['lowest_sell_price'])) {
+            $lowestCurrentSellPrice = $currentSellStrategy['lowest_sell_price'];
+        }
+        
+        if (($currentHour > 21 && $soc > 75) || ($currentHour >= 23 && $soc > 40)) {
+            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
+            $batterySettings->save();
+        } elseif ($lowestCurrentSellPrice > $batterySettings->longterm_target_price_cents) {
+            $batterySettings->target_price_cents = $lowestCurrentSellPrice;
+            $batterySettings->save();
+        }
+
         // Return the fresh data directly
         return response()->json([
             'soc' => $soc,
@@ -146,6 +169,7 @@ class PriceController extends Controller
             'evening_sell_strategy' => $eveningSellStrategy,
             'late_evening_sell_strategy' => $lateEveningSellStrategy,
             'late_night_sell_strategy' => $lateNightSellStrategy,
+            'lowest_current_sell_price' => $lowestCurrentSellPrice,
         ]);
     }
     
