@@ -89,32 +89,51 @@ class PriceController extends Controller
             $kwh75to40 = ($soc > 40) ? (min($soc, 75) - 40) * $socToKwhFactor : 0;
             $kwhToSellLateNight = ($soc > 30) ? (min($soc, 40) - 30) * $socToKwhFactor : 0;
 
-            // 1. Calculate all potential plans first.
+            // Define strategy windows
+            $eveningStart = $now->copy()->setTime(19, 0);
+            $eveningEnd = $now->copy()->setTime(21, 0);
+            $lateEveningStart = $now->copy()->setTime(21, 0);
+            $lateEveningEnd = $now->copy()->setTime(23, 59, 59);
+            $lateNightStart = $now->copy()->addDay()->setTime(0, 0);
+            $lateNightEnd = $now->copy()->addDay()->setTime(2, 30);
+
             $guaranteedEveningPlan = null;
             if ($kwhAbove75 > 0) {
-                $guaranteedEveningPlan = $amberService->calculateOptimalDischarging($kwhAbove75, $batterySettings->longterm_target_price_cents, now()->setTime(19, 0), now()->setTime(21, 0));
+                $effectiveStart = $now->max($eveningStart);
+                if ($effectiveStart < $eveningEnd) {
+                    $guaranteedEveningPlan = $amberService->calculateOptimalDischarging($kwhAbove75, $batterySettings->longterm_target_price_cents, $effectiveStart, $eveningEnd);
+                }
             }
 
             if ($kwh75to40 > 0) {
-                $flexibleEveningPlan = $amberService->calculateOptimalDischarging($kwh75to40, $batterySettings->longterm_target_price_cents, now()->setTime(19, 0), now()->setTime(21, 0));
-                $flexibleLateEveningPlan = $amberService->calculateOptimalDischarging($kwh75to40, $batterySettings->longterm_target_price_cents, now()->setTime(21, 0), now()->setTime(23, 59));
+                $flexibleEveningPlan = null;
+                $effectiveEveningStart = $now->max($eveningStart);
+                if ($effectiveEveningStart < $eveningEnd) {
+                    $flexibleEveningPlan = $amberService->calculateOptimalDischarging($kwh75to40, $batterySettings->longterm_target_price_cents, $effectiveEveningStart, $eveningEnd);
+                }
+
+                $flexibleLateEveningPlan = null;
+                $effectiveLateEveningStart = $now->max($lateEveningStart);
+                if ($effectiveLateEveningStart < $lateEveningEnd) {
+                    $flexibleLateEveningPlan = $amberService->calculateOptimalDischarging($kwh75to40, $batterySettings->longterm_target_price_cents, $effectiveLateEveningStart, $lateEveningEnd);
+                }
                 
-                // 2. Compare and assign, don't recalculate.
                 if (($flexibleLateEveningPlan['total_revenue'] ?? 0) > ($flexibleEveningPlan['total_revenue'] ?? 0)) {
-                    // Late evening is more profitable for the flexible block.
                     $eveningSellStrategy = $guaranteedEveningPlan;
-                    $lateEveningSellStrategy = $flexibleLateEveningPlan; // Assign the pre-calculated plan.
+                    $lateEveningSellStrategy = $flexibleLateEveningPlan;
                 } else {
-                    // Early evening is more (or equally) profitable. Merge the guaranteed and flexible plans.
                     $eveningSellStrategy = $this->mergeSellPlans($guaranteedEveningPlan, $flexibleEveningPlan);
-                    $lateEveningSellStrategy = null; // Ensure it's null.
+                    $lateEveningSellStrategy = null;
                 }
             } else {
-                // No flexible block to sell, so the evening strategy is just the guaranteed plan.
                 $eveningSellStrategy = $guaranteedEveningPlan;
             }
+
             if ($kwhToSellLateNight > 0) {
-                $lateNightSellStrategy = $amberService->calculateOptimalDischarging($kwhToSellLateNight, $batterySettings->longterm_target_price_cents, now()->addDay()->setTime(0, 0), now()->addDay()->setTime(2, 30));
+                $effectiveLateNightStart = $now->max($lateNightStart);
+                if ($effectiveLateNightStart < $lateNightEnd) {
+                    $lateNightSellStrategy = $amberService->calculateOptimalDischarging($kwhToSellLateNight, $batterySettings->longterm_target_price_cents, $effectiveLateNightStart, $lateNightEnd);
+                }
             }
             
             if ($kwhToBuy > 0) {
