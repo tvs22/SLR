@@ -49,6 +49,7 @@ class DashboardController extends Controller
             'kwh_to_buy' => Cache::get('kwh_to_buy'),
             'buyStrategy' => Cache::get('buy_strategy'),
             'evening_sell_strategy' => Cache::get('evening_sell_strategy'),
+            'late_evening_sell_strategy' => Cache::get('late_evening_sell_strategy'),
             'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),
             'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
         ]);

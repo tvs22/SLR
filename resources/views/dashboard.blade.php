@@ -69,20 +69,31 @@ function getPriceClass($price) {
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <div class="card">
                                 <div class="card-header bg-danger text-white">
-                                    <h6>Evening Sell (19:00 - 23:59)</h6>
-                                    <small>Sell down to 40% SOC</small>
+                                    <h6>Evening Sell (19:00 - 21:00)</h6>
+                                    <small>Sell down to 75% SOC</small>
                                 </div>
                                 <div class="card-body" id="evening-sell-strategy-container">
                                     {{-- Content will be injected by JS --}}
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4 mb-3">
                             <div class="card">
                                 <div class="card-header bg-warning text-dark">
+                                    <h6>Late Evening Sell (21:00 - 23:59)</h6>
+                                    <small>Sell down to 40% SOC</small>
+                                </div>
+                                <div class="card-body" id="late-evening-sell-strategy-container">
+                                    {{-- Content will be injected by JS --}}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
                                     <h6>Late Night Sell (00:00 - 02:30)</h6>
                                     <small>Sell down to 30% SOC</small>
                                 </div>
@@ -138,6 +149,7 @@ function getPriceClass($price) {
                                 <th>Price (c/kWh)</th>
                                 <th>kWh to Sell</th>
                                 <th>Revenue</th>
+                                <th>Remaining kWh</th>
                             </tr>
                         </thead>
                         <tbody id="sell-plan-body">
@@ -188,113 +200,125 @@ function getPriceClass($price) {
             return Math.floor(seconds) + " seconds ago";
         }
 
-        function updateDashboard() {
-            fetch('{{ route("dashboard.data") }}')
+        function renderDashboard(data) {
+            // Prices & Status
+            if (data.prices) {
+                document.getElementById('electricity-price').textContent = data.prices.electricityPrice !== null ? parseFloat(data.prices.electricityPrice).toFixed(2) + ' c/kWh' : 'n/a';
+                document.getElementById('electricity-price').className = getPriceClass(data.prices.electricityPrice);
+                document.getElementById('solar-ftt').textContent = data.prices.solarPrice !== null ? parseFloat(data.prices.solarPrice).toFixed(2) + ' c/kWh' : 'n/a';
+                document.getElementById('solar-ftt').className = getPriceClass(data.prices.solarPrice);
+            }
+            if (data.battery) {
+                document.getElementById('forced-discharge').textContent = data.battery.forced_discharge ? 'Yes' : 'No';
+                document.getElementById('forced-charge').textContent = data.battery.forced_charge ? 'Yes' : 'No';
+                document.getElementById('target-price').textContent = parseFloat(data.battery.target_price_cents).toFixed(2) + ' Cents';
+                document.getElementById('target-electric-price').textContent = parseFloat(data.battery.target_electric_price_cents).toFixed(2) + ' Cents';
+            }
+            document.getElementById('last-updated').textContent = timeSince(data.last_updated);
+
+            // SOC & Solar
+            document.getElementById('soc').textContent = data.soc ? data.soc + '%' : 'n/a';
+            document.getElementById('remaining-solar').textContent = data.remaining_solar_generation_today ? parseFloat(data.remaining_solar_generation_today).toFixed(2) + ' kWh' : 'n/a';
+            document.getElementById('forecast-soc').textContent = data.forecast_soc ? data.forecast_soc + '%' : 'n/a';
+            document.getElementById('today-forecast').textContent = data.todayForecast ? parseFloat(data.todayForecast).toFixed(2) + ' kWh' : '0.00 kWh';
+            document.getElementById('tomorrow-forecast').textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
+
+            // Sell Strategies
+            function updateSellStrategy(strategyName, containerId) {
+                const container = document.getElementById(containerId);
+                const strategy = data[strategyName];
+                if (strategy && Object.keys(strategy).length > 0) {
+                    if (strategy.error) {
+                        container.innerHTML = `<p class="text-danger">${strategy.error}</p>`;
+                    } else if (strategy.message) {
+                        container.innerHTML = `<p>${strategy.message}</p>`;
+                    } else {
+                        container.innerHTML = 
+                            `<p><strong>Total kWh to sell:</strong> <span>${parseFloat(strategy.total_kwh_sold || 0).toFixed(2)} kWh</span></p>` +
+                            `<p><strong>Total Revenue:</strong> <span>$${(parseFloat(strategy.total_revenue || 0) / 100).toFixed(2)}</span></p>` +
+                            `<p><strong>Highest Sell Price:</strong> <span>${parseFloat(strategy.highest_sell_price || 0).toFixed(2)} c/kWh at ${strategy.highest_sell_price_time || 'n/a'}</span></p>` +
+                            `<p><strong>Lowest Sell Price:</strong> <span>${parseFloat(strategy.lowest_sell_price || 0).toFixed(2)} c/kWh</span></p>`;
+                    }
+                } else {
+                    container.innerHTML = `<p>No data available.</p>`;
+                }
+            }
+            updateSellStrategy('evening_sell_strategy', 'evening-sell-strategy-container');
+            updateSellStrategy('late_evening_sell_strategy', 'late-evening-sell-strategy-container');
+            updateSellStrategy('late_night_sell_strategy', 'late-night-sell-strategy-container');
+
+            // Buy Plan
+            const buyPlanContainer = document.getElementById('buy-plan-container');
+            const buyPlanBody = document.getElementById('buy-plan-body');
+            buyPlanBody.innerHTML = ''; 
+            if (data.buyStrategy) {
+                if (data.buyStrategy.error) {
+                    buyPlanContainer.innerHTML = `<p class="text-danger">${data.buyStrategy.error}</p>`;
+                } else if (data.buyStrategy.message) {
+                    buyPlanContainer.innerHTML = `<p>${data.buyStrategy.message}</p>`;
+                } else if (data.buyStrategy.buy_plan && data.buyStrategy.buy_plan.length > 0) {
+                    data.buyStrategy.buy_plan.forEach(item => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${item.time}</td>
+                            <td>${item.price.toFixed(2)}</td>
+                            <td>${item.kwh.toFixed(2)}</td>
+                            <td>$${(item.cost / 100).toFixed(2)}</td>
+                        `;
+                        buyPlanBody.appendChild(row);
+                    });
+                } else {
+                    buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No buy plan available.</td></tr>';
+                }
+            } else {
+                buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No data available.</td></tr>';
+            }
+
+            // Sell Plan
+            const sellPlanBody = document.getElementById('sell-plan-body');
+            sellPlanBody.innerHTML = '';
+            const sellPlans = [];
+            if (data.evening_sell_strategy && data.evening_sell_strategy.sell_plan) {
+                sellPlans.push(...data.evening_sell_strategy.sell_plan);
+            }
+            if (data.late_evening_sell_strategy && data.late_evening_sell_strategy.sell_plan) {
+                sellPlans.push(...data.late_evening_sell_strategy.sell_plan);
+            }
+            if (data.late_night_sell_strategy && data.late_night_sell_strategy.sell_plan) {
+                sellPlans.push(...data.late_night_sell_strategy.sell_plan);
+            }
+
+            if (sellPlans.length > 0) {
+                sellPlans.sort((a, b) => {
+                    return a.time.localeCompare(b.time);
+                });
+
+                let totalKwhToSell = sellPlans.reduce((total, item) => total + item.kwh, 0);
+
+                sellPlans.forEach(item => {
+                    totalKwhToSell -= item.kwh;
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.time}</td>
+                        <td>${item.price.toFixed(2)}</td>
+                        <td>${item.kwh.toFixed(2)}</td>
+                        <td>$${(item.revenue / 100).toFixed(2)}</td>
+                        <td>${totalKwhToSell.toFixed(2)}</td>
+                    `;
+                    sellPlanBody.appendChild(row);
+                });
+            } else {
+                sellPlanBody.innerHTML = '<tr><td colspan="5" class="text-center">No sell plan available.</td></tr>';
+            }
+
+            timeRemaining = POLLING_INTERVAL / 1000;
+        }
+
+        function pollDashboard() {
+             fetch('{{ route("dashboard.data") }}')
                 .then(response => response.json())
                 .then(data => {
-                    // Prices & Status
-                    if (data.prices) {
-                        document.getElementById('electricity-price').textContent = data.prices.electricityPrice !== null ? parseFloat(data.prices.electricityPrice).toFixed(2) + ' c/kWh' : 'n/a';
-                        document.getElementById('electricity-price').className = getPriceClass(data.prices.electricityPrice);
-                        document.getElementById('solar-ftt').textContent = data.prices.solarPrice !== null ? parseFloat(data.prices.solarPrice).toFixed(2) + ' c/kWh' : 'n/a';
-                        document.getElementById('solar-ftt').className = getPriceClass(data.prices.solarPrice);
-                    }
-                    if (data.battery) {
-                        document.getElementById('forced-discharge').textContent = data.battery.forced_discharge ? 'Yes' : 'No';
-                        document.getElementById('forced-charge').textContent = data.battery.forced_charge ? 'Yes' : 'No';
-                        document.getElementById('target-price').textContent = parseFloat(data.battery.target_price_cents).toFixed(2) + ' Cents';
-                        document.getElementById('target-electric-price').textContent = parseFloat(data.battery.target_electric_price_cents).toFixed(2) + ' Cents';
-                    }
-                    document.getElementById('last-updated').textContent = timeSince(data.last_updated);
-
-                    // SOC & Solar
-                    document.getElementById('soc').textContent = data.soc ? data.soc + '%' : 'n/a';
-                    document.getElementById('remaining-solar').textContent = data.remaining_solar_generation_today ? parseFloat(data.remaining_solar_generation_today).toFixed(2) + ' kWh' : 'n/a';
-                    document.getElementById('forecast-soc').textContent = data.forecast_soc ? data.forecast_soc + '%' : 'n/a';
-                    document.getElementById('today-forecast').textContent = data.todayForecast ? parseFloat(data.todayForecast).toFixed(2) + ' kWh' : '0.00 kWh';
-                    document.getElementById('tomorrow-forecast').textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
-
-                    // Sell Strategies
-                    function updateSellStrategy(strategyName, containerId) {
-                        const container = document.getElementById(containerId);
-                        const strategy = data[strategyName];
-                        if (strategy && Object.keys(strategy).length > 0) {
-                            if (strategy.error) {
-                                container.innerHTML = `<p class="text-danger">${strategy.error}</p>`;
-                            } else if (strategy.message) {
-                                container.innerHTML = `<p>${strategy.message}</p>`;
-                            } else {
-                                container.innerHTML = 
-                                    `<p><strong>Total kWh to sell:</strong> <span>${parseFloat(strategy.total_kwh_sold || 0).toFixed(2)} kWh</span></p>` +
-                                    `<p><strong>Total Revenue:</strong> <span>$${(parseFloat(strategy.total_revenue || 0) / 100).toFixed(2)}</span></p>` +
-                                    `<p><strong>Highest Sell Price:</strong> <span>${parseFloat(strategy.highest_sell_price || 0).toFixed(2)} c/kWh at ${strategy.highest_sell_price_time || 'n/a'}</span></p>` +
-                                    `<p><strong>Lowest Sell Price:</strong> <span>${parseFloat(strategy.lowest_sell_price || 0).toFixed(2)} c/kWh</span></p>`;
-                            }
-                        } else {
-                            container.innerHTML = `<p>No data available.</p>`;
-                        }
-                    }
-                    updateSellStrategy('evening_sell_strategy', 'evening-sell-strategy-container');
-                    updateSellStrategy('late_night_sell_strategy', 'late-night-sell-strategy-container');
-
-                    // Buy Plan
-                    const buyPlanContainer = document.getElementById('buy-plan-container');
-                    const buyPlanBody = document.getElementById('buy-plan-body');
-                    buyPlanBody.innerHTML = ''; 
-                    if (data.buyStrategy) {
-                        if (data.buyStrategy.error) {
-                            buyPlanContainer.innerHTML = `<p class="text-danger">${data.buyStrategy.error}</p>`;
-                        } else if (data.buyStrategy.message) {
-                            buyPlanContainer.innerHTML = `<p>${data.buyStrategy.message}</p>`;
-                        } else if (data.buyStrategy.buy_plan && data.buyStrategy.buy_plan.length > 0) {
-                            data.buyStrategy.buy_plan.forEach(item => {
-                                const row = document.createElement('tr');
-                                row.innerHTML = `
-                                    <td>${item.time}</td>
-                                    <td>${item.price.toFixed(2)}</td>
-                                    <td>${item.kwh.toFixed(2)}</td>
-                                    <td>$${(item.cost / 100).toFixed(2)}</td>
-                                `;
-                                buyPlanBody.appendChild(row);
-                            });
-                        } else {
-                            buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No buy plan available.</td></tr>';
-                        }
-                    } else {
-                        buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No data available.</td></tr>';
-                    }
-
-                    // Sell Plan
-                    const sellPlanBody = document.getElementById('sell-plan-body');
-                    sellPlanBody.innerHTML = '';
-                    const sellPlans = [];
-                    if (data.evening_sell_strategy && data.evening_sell_strategy.sell_plan) {
-                        sellPlans.push(...data.evening_sell_strategy.sell_plan);
-                    }
-                    if (data.late_night_sell_strategy && data.late_night_sell_strategy.sell_plan) {
-                        sellPlans.push(...data.late_night_sell_strategy.sell_plan);
-                    }
-
-                    if (sellPlans.length > 0) {
-                        sellPlans.sort((a, b) => {
-                            return a.time.localeCompare(b.time);
-                        });
-
-                        sellPlans.forEach(item => {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${item.time}</td>
-                                <td>${item.price.toFixed(2)}</td>
-                                <td>${item.kwh.toFixed(2)}</td>
-                                <td>$${(item.revenue / 100).toFixed(2)}</td>
-                            `;
-                            sellPlanBody.appendChild(row);
-                        });
-                    } else {
-                        sellPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No sell plan available.</td></tr>';
-                    }
-
-                    timeRemaining = POLLING_INTERVAL / 1000;
+                    renderDashboard(data)
                 })
                 .catch(error => console.error('Error fetching dashboard data:', error));
         }
@@ -318,8 +342,8 @@ function getPriceClass($price) {
                 }
             })
             .then(response => response.json())
-            .then(data => {
-                updateDashboard(); 
+            .then(() => {
+                pollDashboard(); // Fetch the full, fresh data after prediction
             })
             .finally(() => {
                 const button = document.getElementById('predict-prices-btn');
@@ -328,10 +352,10 @@ function getPriceClass($price) {
             });
         });
 
-        setInterval(updateDashboard, POLLING_INTERVAL);
+        setInterval(pollDashboard, POLLING_INTERVAL);
         setInterval(updateCountdown, 1000);
 
-        updateDashboard();
+        pollDashboard();
         updateCountdown();
     });
 </script>
