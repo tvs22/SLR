@@ -220,24 +220,40 @@ class PriceController extends Controller
         if (!$batterySettings) return;
 
         $strategies = $this->getActiveBatteryStrategies();
-        $socHigh = $strategies->firstWhere('name', 'Evening Peak')->soc_lower_bound;
-        $socMedium = $strategies->firstWhere('name', 'Flexible Evening')->soc_lower_bound;
-        $socLow = $strategies->firstWhere('name', 'Overnight')->soc_lower_bound;
+        $eveningPeakStrategy = $strategies->firstWhere('name', 'Evening Peak');
+        $flexibleEveningStrategy = $strategies->firstWhere('name', 'Flexible Evening');
+        $overnightStrategy = $strategies->firstWhere('name', 'Overnight');
 
-        $lateEveningStartHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Evening')->sell_start_time)->hour;
-        $lateEveningEndHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Evening')->sell_end_time)->hour;
-        $lateNightEndHour = Carbon::parse($strategies->firstWhere('name', 'Overnight')->sell_end_time)->hour;
+        // Get the end hour for each strategy, defaulting to -1 if the strategy is not active
+        $eveningPeakEndHour = $eveningPeakStrategy ? Carbon::parse($eveningPeakStrategy->sell_end_time)->hour : -1;
+        $lateEveningEndHour = $flexibleEveningStrategy ? Carbon::parse($flexibleEveningStrategy->sell_end_time)->hour : -1;
+        $lateNightEndHour = $overnightStrategy ? Carbon::parse($overnightStrategy->sell_end_time)->hour : -1;
+        
+        // Get the lower SoC bound for each strategy, defaulting to 101 (unachievable) if not active
+        $socHigh = $eveningPeakStrategy ? $eveningPeakStrategy->soc_lower_bound : 101;
+        $socMedium = $flexibleEveningStrategy ? $flexibleEveningStrategy->soc_lower_bound : 101;
+        $socLow = $overnightStrategy ? $overnightStrategy->soc_lower_bound : 101;
 
-        if (($currentHour > $lateEveningStartHour && $soc > $socHigh) || ($currentHour > $lateEveningEndHour && $soc > $socMedium)) {
-            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
-            $batterySettings->save();
+        // Determine the target price based on the current time and SoC
+        $newTargetPrice = null;
+
+        if ($currentHour >= $eveningPeakEndHour && $currentHour < $lateEveningEndHour && $soc > $socHigh) {
+            // After Evening Peak but before Late Evening ends, if SoC is still high, reset to long-term.
+            $newTargetPrice = $batterySettings->longterm_target_price_cents;
+        } elseif ($currentHour >= $lateEveningEndHour && $soc > $socMedium) {
+            // After Late Evening, if SoC is still medium, reset to long-term.
+            $newTargetPrice = $batterySettings->longterm_target_price_cents;
+        } elseif ($currentHour >= $lateNightEndHour && $currentHour < 3 && $soc > $socLow) {
+            // After Overnight, if SoC is still low, reset to long-term.
+            $newTargetPrice = $batterySettings->longterm_target_price_cents;
         } elseif ($lowestCurrentSellPrice > $batterySettings->longterm_target_price_cents) {
-            $batterySettings->target_price_cents = $lowestCurrentSellPrice;
-            $batterySettings->save();
+            // If there's a profitable upcoming price, set it as the target.
+            $newTargetPrice = $lowestCurrentSellPrice;
         }
 
-        if ($currentHour >= $lateNightEndHour && $currentHour < 3 && $soc > $socLow) {
-            $batterySettings->target_price_cents = $batterySettings->longterm_target_price_cents;
+        // Only update the database if the target price has changed
+        if ($newTargetPrice !== null && $newTargetPrice != $batterySettings->target_price_cents) {
+            $batterySettings->target_price_cents = $newTargetPrice;
             $batterySettings->save();
         }
     }

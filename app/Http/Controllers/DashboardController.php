@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\BatterySetting;
 use App\BatterySoc;
 use App\BatteryTransaction;
+use App\Models\BatteryStrategy;
 use App\SolarForecast;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
@@ -18,6 +19,7 @@ class DashboardController extends Controller
 
     public function index()
     {
+        //dd(BatteryStrategy::where('is_active', true)->whereNotNull('sell_start_time')->get()[0]);
         return view('dashboard', [
             'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
@@ -32,6 +34,7 @@ class DashboardController extends Controller
             'evening_sell_strategy' => Cache::get('evening_sell_strategy'),
             'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),
             'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
+            'batteryStrategies' => BatteryStrategy::where('is_active', true)->whereNotNull('sell_start_time')->get(),
         ]);
     }
 

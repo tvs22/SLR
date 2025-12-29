@@ -72,8 +72,8 @@ function getPriceClass($price) {
                         <div class="col-md-4 mb-3">
                             <div class="card">
                                 <div class="card-header bg-danger text-white">
-                                    <h6>Evening Sell (19:00 - 21:00)</h6>
-                                    <small>Sell down to 75% SOC</small>
+                                    <h6>{{$batteryStrategies[0]->name}} ({{$batteryStrategies[0]->sell_start_time}} - {{$batteryStrategies[0]->sell_end_time}})</h6>
+                                    <small>Sell down to {{$batteryStrategies[0]->soc_lower_bound}}% SOC</small>
                                 </div>
                                 <div class="card-body" id="evening-sell-strategy-container">
                                     {{-- Content will be injected by JS --}}
@@ -83,8 +83,8 @@ function getPriceClass($price) {
                         <div class="col-md-4 mb-3">
                             <div class="card">
                                 <div class="card-header bg-warning text-dark">
-                                    <h6>Late Evening Sell (21:00 - 23:59)</h6>
-                                    <small>Sell down to 40% SOC</small>
+                                    <h6>{{$batteryStrategies[1]->name}} ({{$batteryStrategies[1]->sell_start_time}} - {{$batteryStrategies[1]->sell_end_time}})</h6>
+                                    <small>Sell down to {{$batteryStrategies[1]->soc_lower_bound}}% SOC</small>
                                 </div>
                                 <div class="card-body" id="late-evening-sell-strategy-container">
                                     {{-- Content will be injected by JS --}}
@@ -94,8 +94,8 @@ function getPriceClass($price) {
                         <div class="col-md-4">
                             <div class="card">
                                 <div class="card-header bg-info text-white">
-                                    <h6>Late Night Sell (00:00 - 02:30)</h6>
-                                    <small>Sell down to 30% SOC</small>
+                                    <h6>{{$batteryStrategies[2]->name}} ({{$batteryStrategies[2]->sell_start_time}} - {{$batteryStrategies[2]->sell_end_time}})</h6>
+                                    <small>Sell down to {{$batteryStrategies[2]->soc_lower_bound}}% SOC</small>
                                 </div>
                                 <div class="card-body" id="late-night-sell-strategy-container">
                                     {{-- Content will be injected by JS --}}
