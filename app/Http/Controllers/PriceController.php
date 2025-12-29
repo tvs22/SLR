@@ -211,7 +211,7 @@ class PriceController extends Controller
                 }
             }
         }
-
+        $lowestPrice=$lowestPrice-1; //1 cent buffer
         return $lowestPrice;
     }
 
