@@ -2,10 +2,12 @@
 
 namespace App;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class BatterySetting extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'target_price_cents',
         'longterm_target_price_cents',

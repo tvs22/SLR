@@ -9,8 +9,11 @@ use App\SolarForecast;
 use App\BatterySetting;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class PriceController extends Controller
 {
@@ -91,14 +94,19 @@ class PriceController extends Controller
             foreach ($batteryStrategies->groupBy('strategy_group') as $group => $strategies) {
                 $bestPlan = null;
                 $bestPlanRevenue = -1;
+                $strategyName = '';
 
                 foreach ($strategies as $strategy) {
                     $kwhToSell = $this->calculateKwhToSell($soc, $strategy);
-
+                    $strategyName = $strategy->name;
+                    
                     if ($kwhToSell > 0) {
                         $startTime = Carbon::parse($strategy->sell_start_time);
                         $endTime = Carbon::parse($strategy->sell_end_time);
-
+                        if ($endTime->lt($startTime)) {
+                            $endTime->addDay();
+                        }
+                        
                         $effectiveStart = $now->max($startTime);
 
                         if ($effectiveStart < $endTime) {
@@ -108,21 +116,20 @@ class PriceController extends Controller
                                 $effectiveStart,
                                 $endTime
                             );
-
                             if ($group && isset($plan['total_revenue'])) {
                                 if ($plan['total_revenue'] > $bestPlanRevenue) {
                                     $bestPlan = $plan;
                                     $bestPlanRevenue = $plan['total_revenue'];
                                 }
                             } else {
-                                $sellPlans[] = $plan;
+                                $sellPlans[$strategyName] = $plan;
                             }
                         }
                     }
                 }
 
                 if ($bestPlan) {
-                    $sellPlans[] = $bestPlan;
+                    $sellPlans[$strategyName] = $bestPlan;
                 }
             }
 
@@ -135,7 +142,7 @@ class PriceController extends Controller
             }
         }
 
-        $finalSellPlan = $this->mergeSellPlans(...$sellPlans);
+        $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
 
         // Cache all the results for polling
         Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
@@ -143,8 +150,20 @@ class PriceController extends Controller
         Cache::put('forecast_soc', $forecastSoc, now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('kwh_to_buy', $kwhToBuy, now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('buy_strategy', $buyStrategy, now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('sell_strategy', $finalSellPlan, now()->addMinutes(self::CACHE_MINUTES));
 
+        $keyMap = [
+            'Evening Peak' => 'evening_sell_strategy',
+            'Flexible Evening' => 'late_evening_sell_strategy',
+            'Overnight' => 'late_night_sell_strategy',
+        ];
+
+        foreach ($sellPlans as $name => $plan) {
+            if (isset($keyMap[$name])) {
+                $key = $keyMap[$name];
+                Cache::put($key, $plan, now()->addMinutes(self::CACHE_MINUTES));
+            }
+        }
+    
         $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $currentHour);
         $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour);
 
@@ -155,7 +174,9 @@ class PriceController extends Controller
             'forecast_soc' => $forecastSoc,
             'kwh_to_buy' => $kwhToBuy,
             'buyStrategy' => $buyStrategy,
-            'sell_strategy' => $finalSellPlan,
+            'evening_sell_strategy' => $sellPlans['Evening Peak'] ?? null,
+            'late_evening_sell_strategy' => $sellPlans['Flexible Evening'] ?? null,
+            'late_night_sell_strategy' => $sellPlans['Overnight'] ?? null,
             'lowest_current_sell_price' => $lowestCurrentSellPrice,
         ]);
     }
@@ -171,7 +192,6 @@ class PriceController extends Controller
             $socRange = min($soc, $strategy->soc_upper_bound) - $strategy->soc_lower_bound;
             return $socRange * self::SOC_TO_KWH_FACTOR;
         }
-
         return 0;
     }
 
@@ -197,13 +217,15 @@ class PriceController extends Controller
 
     private function updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour)
     {
+        if (!$batterySettings) return;
+
         $strategies = $this->getActiveBatteryStrategies();
         $socHigh = $strategies->firstWhere('name', 'Evening Peak')->soc_lower_bound;
         $socMedium = $strategies->firstWhere('name', 'Flexible Evening')->soc_lower_bound;
         $socLow = $strategies->firstWhere('name', 'Overnight')->soc_lower_bound;
 
-        $lateEveningStartHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Late')->sell_start_time)->hour;
-        $lateEveningEndHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Late')->sell_end_time)->hour;
+        $lateEveningStartHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Evening')->sell_start_time)->hour;
+        $lateEveningEndHour = Carbon::parse($strategies->firstWhere('name', 'Flexible Evening')->sell_end_time)->hour;
         $lateNightEndHour = Carbon::parse($strategies->firstWhere('name', 'Overnight')->sell_end_time)->hour;
 
         if (($currentHour > $lateEveningStartHour && $soc > $socHigh) || ($currentHour > $lateEveningEndHour && $soc > $socMedium)) {
@@ -283,5 +305,94 @@ class PriceController extends Controller
         });
 
         return $mergedPlan;
+    }
+
+    public function simulation(Request $request, AmberService $amberService)
+    {
+        if ($request->isMethod('get') && !$request->hasAny(['soc', 'time'])) {
+            return view('price.simulation');
+        }
+
+        try {
+            $validator = Validator::make($request->all(), [
+                'soc' => 'required|numeric|min:0|max:100',
+                'time' => 'required|date',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['message' => 'Invalid input', 'errors' => $validator->errors()], 422);
+            }
+
+            $validated = $validator->validated();
+            $soc = $validated['soc'];
+            $time = Carbon::parse($validated['time']);
+
+            $batterySettings = BatterySetting::latest()->first();
+
+            if (!$batterySettings) {
+                return response()->json([
+                    'message' => 'Battery settings have not been configured.'
+                ], 404);
+            }
+
+            $batteryStrategies = $this->getActiveBatteryStrategies();
+            $sellPlans = [];
+
+            foreach ($batteryStrategies->groupBy('strategy_group') as $group => $strategies) {
+                $bestPlan = null;
+                $bestPlanRevenue = -1;
+                $strategyName = '';
+
+                foreach ($strategies as $strategy) {
+                    $kwhToSell = $this->calculateKwhToSell($soc, $strategy);
+                    $strategyName = $strategy->name;
+
+                    if ($kwhToSell > 0) {
+                        $startTime = Carbon::parse($strategy->sell_start_time);
+                        $endTime = Carbon::parse($strategy->sell_end_time);
+                        if ($endTime->lt($startTime)) {
+                            $endTime->addDay();
+                        }
+
+                        $effectiveStart = $time->max($startTime);
+                        if ($effectiveStart < $endTime) {
+                            $plan = $amberService->calculateOptimalDischarging(
+                                $kwhToSell,
+                                $batterySettings->longterm_target_price_cents,
+                                $effectiveStart,
+                                $endTime
+                            );
+
+                            if ($group && isset($plan['total_revenue'])) {
+                                if ($plan['total_revenue'] > $bestPlanRevenue) {
+                                    $bestPlan = $plan;
+                                    $bestPlanRevenue = $plan['total_revenue'];
+                                }
+                            } else {
+                                $sellPlans[$strategyName] = $plan;
+                            }
+                        }
+                    }
+                }
+
+                if ($bestPlan) {
+                    $sellPlans[$strategyName] = $bestPlan;
+                }
+            }
+
+            $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
+
+            return response()->json($finalSellPlan);
+
+        } catch (\Throwable $e) {
+            Log::error('Simulation Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'An unexpected server error occurred during the simulation.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

@@ -38,4 +38,5 @@ Route::group(['middleware' => ['auth']], function () {
     Route::resource('pv-yields', 'App\Http\Controllers\PvYieldController');
     Route::get('/dashboard/data', 'App\Http\Controllers\DashboardController@data')->name('dashboard.data');
     Route::resource('battery-strategies', 'App\Http\Controllers\BatteryStrategyController');
+    Route::get('/price/simulation', 'App\Http\Controllers\PriceController@simulation')->name('price.simulation');
 });

@@ -19,3 +19,4 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
 });
 
 Route::get('/price/predicted-prices', [PriceController::class, 'getPredictedPrices']);
+Route::get('/price/simulate', [PriceController::class, 'simulation']);
