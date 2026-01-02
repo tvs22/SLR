@@ -77,11 +77,25 @@ class BatterySocController extends Controller
             }
         }
 
+        $solarProduction = [
+            8  => 1.28,
+            9  => 1.92,
+            10 => 2.38,
+            11 => 2.74,
+            12 => 2.88, // Peak
+            13 => 2.74,
+            14 => 2.19,
+            15 => 1.74,
+            16 => 1.01,
+            17 => 0.64,
+            18 => 0.37,
+            19 => 0.11
+        ];
         $pvMinTarget = collect();
         $pvMinTargetKwh = collect();
-        $thour = -2;
-        for ($hour = 8; $hour <= 18; $hour++) {
-            $thour = $thour + 2;
+        $thour = 0;
+        foreach ($solarProduction as $hour => $production) {
+            $thour = $thour + $production;
             $pvMinTarget->put($hour, $thour / 0.4193);
             $pvMinTargetKwh->put($hour, $thour);
         }
