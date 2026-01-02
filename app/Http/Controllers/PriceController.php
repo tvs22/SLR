@@ -147,8 +147,26 @@ class PriceController extends Controller
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
 
-        if ((!isset($finalSellPlan['sell_plan']) || empty($finalSellPlan['sell_plan'])) && $batterySettings->forced_discharge) {
-            $batterySettings->forced_discharge = false;
+        $hasActiveSellPlan = !empty($finalSellPlan['sell_plan']);
+        $isWithinSellWindow = false;
+
+        foreach ($batteryStrategies as $strategy) {
+            $startTime = Carbon::parse($strategy->sell_start_time);
+            $endTime = Carbon::parse($strategy->sell_end_time);
+            if ($endTime->lt($startTime)) {
+                $endTime->addDay();
+            }
+            if ($now->between($startTime, $endTime)) {
+                $isWithinSellWindow = true;
+                break;
+            }
+        }
+
+        if ($hasActiveSellPlan && $isWithinSellWindow) {
+            $batterySettings->status = 'prioritize_charging';
+            $batterySettings->save();
+        } elseif ((!isset($finalSellPlan['sell_plan']) || empty($finalSellPlan['sell_plan'])) && $batterySettings->forced_discharge) {
+            $batterySettings->status = 'self_sufficient';
             $batterySettings->save();
         }
 

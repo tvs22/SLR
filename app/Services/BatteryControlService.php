@@ -27,6 +27,8 @@ class BatteryControlService
         $currentSolarPrice = $prices['solarPrice'];
         $targetSolarPrice = $battery->target_price_cents;
         $shouldForceDischarge = $currentSolarPrice > $targetSolarPrice;
+        if($battery->status=='self_sufficient')
+            $shouldForceDischarge=false;
 
         if ($battery->forced_discharge !== $shouldForceDischarge) {
  
