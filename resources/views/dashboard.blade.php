@@ -110,7 +110,53 @@ function getPriceClass($price) {
             </div>
         </div>
         <div class="tab-pane fade" id="sell-plan-content" role="tabpanel" aria-labelledby="sell-plan-tab">
-            {{-- Sell Plan --}}
+            <div class="row mt-4">
+                {{-- Sell Strategies --}}
+                <div class="col-lg-12 col-md-12 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5>Sell Strategies</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <div class="card">
+                                        <div class="card-header bg-danger text-white">
+                                            <h6>{{$batteryStrategies[0]->name}} ({{$batteryStrategies[0]->sell_start_time}} - {{$batteryStrategies[0]->sell_end_time}})</h6>
+                                            <small>Sell down to {{$batteryStrategies[0]->soc_lower_bound}}% SOC</small>
+                                        </div>
+                                        <div class="card-body" id="evening-sell-strategy-container">
+                                            {{-- Content will be injected by JS --}}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <div class="card">
+                                        <div class="card-header bg-warning text-dark">
+                                            <h6>{{$batteryStrategies[1]->name}} ({{$batteryStrategies[1]->sell_start_time}} - {{$batteryStrategies[1]->sell_end_time}})</h6>
+                                            <small>Sell down to {{$batteryStrategies[1]->soc_lower_bound}}% SOC</small>
+                                        </div>
+                                        <div class="card-body" id="late-evening-sell-strategy-container">
+                                            {{-- Content will be injected by JS --}}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header bg-info text-white">
+                                            <h6>{{$batteryStrategies[2]->name}} ({{$batteryStrategies[2]->sell_start_time}} - {{$batteryStrategies[2]->sell_end_time}})</h6>
+                                            <small>Sell down to {{$batteryStrategies[2]->soc_lower_bound}}% SOC</small>
+                                        </div>
+                                        <div class="card-body" id="late-night-sell-strategy-container">
+                                            {{-- Content will be injected by JS --}}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="row mt-4">
                 <div class="col-12">
                     <div class="card">
@@ -160,6 +206,27 @@ function getPriceClass($price) {
             const hours = d.getHours().toString().padStart(2, '0');
             const minutes = d.getMinutes().toString().padStart(2, '0');
             return `${hours}:${minutes}`;
+        }
+
+        function renderSellStrategy(containerId, strategyData) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (strategyData && strategyData.sell_plan && strategyData.sell_plan.length > 0) {
+                let html = '<ul class="list-group list-group-flush">';
+                strategyData.sell_plan.forEach(item => {
+                    html += `<li class="list-group-item d-flex justify-content-between align-items-center">` +
+                            `<span>${item.time} -> ${item.price.toFixed(2)}c</span>` +
+                            `<span class="badge bg-primary rounded-pill">${item.kwh.toFixed(2)} kWh</span>` +
+                            `</li>`;
+                });
+                html += '</ul>';
+                container.innerHTML = html;
+            } else if (strategyData && strategyData.message) {
+                container.innerHTML = `<p>${strategyData.message}</p>`;
+            } else {
+                container.innerHTML = '<p>No profitable slots found.</p>';
+            }
         }
 
         function renderDashboard(data) {
@@ -248,6 +315,11 @@ function getPriceClass($price) {
             } else {
                 sellPlanBody.innerHTML = '<tr><td colspan="5" class="text-center">No sell plan available.</td></tr>';
             }
+
+            // Sell Strategies
+            renderSellStrategy('evening-sell-strategy-container', data.evening_sell_strategy);
+            renderSellStrategy('late-evening-sell-strategy-container', data.late_evening_sell_strategy);
+            renderSellStrategy('late-night-sell-strategy-container', data.late_night_sell_strategy);
 
             timeRemaining = POLLING_INTERVAL / 1000;
         }

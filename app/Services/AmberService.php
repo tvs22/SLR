@@ -46,7 +46,7 @@ class AmberService
         ];
     }
 
-    public function calculateOptimalCharging(float $kwh, float $electricBuyTargetPrice, float $solarTargetSellPrice)
+    public function calculateOptimalCharging(float $kwh, float $electricBuyTargetPrice)
     {
         $apiKey = env('AMBER_ELECTRIC_API_KEY');
         $siteId = env('AMBER_ELECTRIC_SITE_ID');
@@ -73,13 +73,12 @@ class AmberService
                     $interval['startTimeCarbon'] = Carbon::parse($interval['startTime']);
                     return $interval;
                 });
-
+            
             $buyIntervals = $data
                 ->filter(function ($interval) use ($electricBuyTargetPrice) {
                     return $interval['perKwh'] <= $electricBuyTargetPrice;
                 })
                 ->sortBy('perKwh');
-
             if ($buyIntervals->isEmpty()) {
                 return ['message' => 'No profitable buy windows found.'];
             }
@@ -97,7 +96,6 @@ class AmberService
                 $kwhPerInterval = self::BATTERY_POWER * (30 / 60);
                 $kwhToAcquireInInterval = min($kwhPerInterval, $totalKwhToAcquire - $kwhAcquired);
                 $costForInterval = $kwhToAcquireInInterval * $interval['perKwh'];
-
                 $buyPlan[] = [
                     'time' => Carbon::parse($interval['nemTime'])->format('H:i'),
                     'cost' => round($costForInterval, 2),

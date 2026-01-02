@@ -31,7 +31,6 @@
                     @endif
                     <tr>
                         <td>{{ \Carbon\Carbon::parse($transaction->datetime)->format('H:i') }}</td>
-                        <td>{{ $transaction->datetime }}</td>
                         <td>{{ $transaction->price_cents }}</td>
                         <td>{{ $transaction->action }}</td>
                     </tr>

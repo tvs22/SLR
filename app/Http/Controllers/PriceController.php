@@ -141,11 +141,7 @@ class PriceController extends Controller
             }
 
             if ($kwhToBuy > 0) {
-                $buyStrategy = $amberService->calculateOptimalCharging(
-                    $kwhToBuy,
-                    $batterySettings->longterm_target_electric_price_cents,
-                    $batterySettings->longterm_target_price_cents
-                );
+                $buyStrategy = $this->pvYieldBackfill($amberService, $batterySettings);
             }
         }
 
@@ -192,6 +188,57 @@ class PriceController extends Controller
             'lowest_current_sell_price' => $lowestCurrentSellPrice,
         ]);
     }
+
+    public function pvYieldBackfill(AmberService $amberService, BatterySetting $batterySettings): array
+    {
+        $now = Carbon::now();
+        $today = $now->toDateString();
+        $currentHour = $now->hour;
+        
+        if(!isset($batterySettings->longterm_target_electric_price_cents))
+        $batterySettings = BatterySetting::latest()->first();
+
+        $eveningPeakStrategy = BatteryStrategy::where('name', 'Evening Peak')->first();
+        $buyStartTime = Carbon::parse($eveningPeakStrategy->buy_start_time);
+        $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
+
+        $currentYield = DB::table('pv_yields')->where('date', $today)->where('hour', $currentHour)->first();
+
+        if (!$currentYield) {
+            return ['buy_plan' => []];
+        }
+
+        $currentYieldKwh = $currentYield->kwh;
+
+        $lowSolarProduction = [
+            8  => 1.28,
+            9  => 3.20,
+            10 => 5.58,
+            11 => 8.32,
+            12 => 11.20, // Peak
+            13 => 13.94,
+            14 => 16.13,
+            15 => 17.87,
+            16 => 18.88,
+            17 => 19.52,
+            18 => 19.89,
+            19 => 20
+        ];
+
+        $estimatedGeneration = 0;
+        $targetKwh = $lowSolarProduction[19];
+        $futureGeneration = $currentYieldKwh/$lowSolarProduction[$currentHour]*$targetKwh;
+        $kwhToBuy = max(0, $targetKwh - $futureGeneration);
+        if ($kwhToBuy > 0) {
+            return $amberService->calculateOptimalCharging(
+                $kwhToBuy,
+                $batterySettings->longterm_target_electric_price_cents+5
+            );
+        }
+
+        return ['buy_plan' => []];
+    }
+
 
     /**
      * Get active battery strategies.
