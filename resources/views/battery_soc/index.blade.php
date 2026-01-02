@@ -43,20 +43,24 @@
                     <label class="form-check-label" for="current_checkbox">Current</label>
                 </div>
                 <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="forecast_checkbox" value="forecast" checked>
-                    <label class="form-check-label" for="forecast_checkbox">Forecast</label>
-                </div>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="solar_forecast_checkbox" value="solar_forecast" checked>
-                    <label class="form-check-label" for="solar_forecast_checkbox">Solar Forecast</label>
+                    <input class="form-check-input" type="checkbox" id="soc_forecast_checkbox" value="soc_forecast" checked>
+                    <label class="form-check-label" for="soc_forecast_checkbox">SOC Forecast</label>
                 </div>
                 <div class="form-check form-check-inline">
                     <input class="form-check-input" type="checkbox" id="pv_yield_checkbox" value="pv_yield" checked>
                     <label class="form-check-label" for="pv_yield_checkbox">PV Yield</label>
                 </div>
                 <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="pv_forecast_checkbox" value="pv_forecast" checked>
+                    <label class="form-check-label" for="pv_forecast_checkbox">PV Forecast</label>
+                </div>
+                <div class="form-check form-check-inline">
                     <input class="form-check-input" type="checkbox" id="pv_min_target_checkbox" value="pv_min_target" checked>
                     <label class="form-check-label" for="pv_min_target_checkbox">PV Min Target</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="pv_max_target_checkbox" value="pv_max_target" checked>
+                    <label class="form-check-label" for="pv_max_target_checkbox">PV Max Target</label>
                 </div>
             </div>
         </div>
@@ -122,9 +126,11 @@
             return labels.map(label => dataMap.get(String(label)) || null);
         }
 
-        const solarForecastKwhData = formatData(chartData.solar_forecast_kwh, labels);
         const pvYieldKwhData = formatData(chartData.pv_yield_kwh, labels);
+        const pvForecastKwhData = formatData(chartData.pv_forecast_kwh, labels);
         const pvMinTargetKwhData = formatData(chartData.pv_min_target_kwh, labels);
+        const pvMaxTargetKwhData = formatData(chartData.pv_max_target_kwh, labels);
+        const socForecastKwhData = formatData(chartData.soc_forecast_kwh, labels);
 
         const datasets = [
             {
@@ -133,7 +139,6 @@
                 borderColor: 'rgba(75, 192, 192, 1)',
                 backgroundColor: 'rgba(75, 192, 192, 0.2)',
                 hidden: !document.getElementById('soc_plan_checkbox').checked,
-                yAxisID: 'y',
             },
             {
                 label: 'SOC Low Plan',
@@ -141,7 +146,6 @@
                 borderColor: 'rgba(255, 99, 132, 1)',
                 backgroundColor: 'rgba(255, 99, 132, 0.2)',
                 hidden: !document.getElementById('soc_low_plan_checkbox').checked,
-                yAxisID: 'y',
             },
             {
                 label: 'Current',
@@ -149,31 +153,27 @@
                 borderColor: 'rgba(54, 162, 235, 1)',
                 backgroundColor: 'rgba(54, 162, 235, 0.2)',
                 hidden: !document.getElementById('current_checkbox').checked,
-                yAxisID: 'y',
             },
             {
-                label: 'Forecast',
-                data: formatData(chartData.forecast, labels),
-                borderColor: 'rgba(255, 206, 86, 1)',
-                backgroundColor: 'rgba(255, 206, 86, 0.2)',
-                hidden: !document.getElementById('forecast_checkbox').checked,
-                yAxisID: 'y',
-            },
-            {
-                label: 'Solar Forecast (%)',
-                data: formatData(chartData.solar_forecast, labels),
+                label: 'SOC Forecast',
+                data: formatData(chartData.soc_forecast, labels),
                 borderColor: 'rgba(153, 102, 255, 1)',
                 backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                hidden: !document.getElementById('solar_forecast_checkbox').checked,
-                yAxisID: 'y',
+                hidden: !document.getElementById('soc_forecast_checkbox').checked,
             },
             {
-                label: 'PV Yield (%)',
+                label: 'PV Yield',
                 data: formatData(chartData.pv_yield, labels),
                 borderColor: 'rgba(255, 159, 64, 1)',
                 backgroundColor: 'rgba(255, 159, 64, 0.2)',
                 hidden: !document.getElementById('pv_yield_checkbox').checked,
-                yAxisID: 'y',
+            },
+            {
+                label: 'PV Forecast',
+                data: formatData(chartData.pv_forecast, labels),
+                borderColor: 'rgba(255, 206, 86, 1)',
+                backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                hidden: !document.getElementById('pv_forecast_checkbox').checked,
             },
             {
                 label: 'PV Min Target',
@@ -181,7 +181,13 @@
                 borderColor: 'rgba(0, 255, 0, 1)',
                 backgroundColor: 'rgba(0, 255, 0, 0.2)',
                 hidden: !document.getElementById('pv_min_target_checkbox').checked,
-                yAxisID: 'y',
+            },
+            {
+                label: 'PV Max Target',
+                data: formatData(chartData.pv_max_target, labels),
+                borderColor: 'rgba(0, 100, 0, 1)',
+                backgroundColor: 'rgba(0, 100, 0, 0.2)',
+                hidden: !document.getElementById('pv_max_target_checkbox').checked,
             }
         ];
 
@@ -208,21 +214,27 @@
                                 const datasetIndex = context.datasetIndex;
                                 const dataIndex = context.dataIndex;
 
-                                if (datasetIndex === 4) { // Solar Forecast (%)
-                                    const kwhValue = solarForecastKwhData[dataIndex];
-                                    if (kwhValue !== null) {
-                                        label += ' (' + kwhValue.toFixed(2) + ' kWh)';
-                                    }
-                                } else if (datasetIndex === 5) { // PV Yield (%)
-                                    const kwhValue = pvYieldKwhData[dataIndex];
-                                    if (kwhValue !== null) {
-                                        label += ' (' + kwhValue.toFixed(2) + ' kWh)';
-                                    }
-                                } else if (datasetIndex === 6) { // PV Min Target
-                                    const kwhValue = pvMinTargetKwhData[dataIndex];
-                                    if (kwhValue !== null) {
-                                        label += ' (' + kwhValue.toFixed(2) + ' kWh)';
-                                    }
+                                let kwhValue;
+                                switch (datasetIndex) {
+                                    case 3: // SOC Forecast
+                                        kwhValue = socForecastKwhData[dataIndex];
+                                        break;
+                                    case 4: // PV Yield
+                                        kwhValue = pvYieldKwhData[dataIndex];
+                                        break;
+                                    case 5: // PV Forecast
+                                        kwhValue = pvForecastKwhData[dataIndex];
+                                        break;
+                                    case 6: // PV Min Target
+                                        kwhValue = pvMinTargetKwhData[dataIndex];
+                                        break;
+                                    case 7: // PV Max Target
+                                        kwhValue = pvMaxTargetKwhData[dataIndex];
+                                        break;
+                                }
+
+                                if (kwhValue !== undefined && kwhValue !== null) {
+                                    label += ' (' + kwhValue.toFixed(2) + ' kWh)';
                                 }
 
                                 return label;
@@ -247,20 +259,6 @@
                         },
                         min: 0,
                         max: 100
-                    },
-                    y2: {
-                        type: 'linear',
-                        display: false,
-                        position: 'right',
-                        title: {
-                            display: true,
-                            text: 'KWH'
-                        },
-                        min: 0,
-                        max: 10,
-                        grid: {
-                            drawOnChartArea: false
-                        }
                     }
                 }
             }
@@ -280,24 +278,29 @@
             socChart.data.datasets[2].hidden = !this.checked;
             socChart.update();
         });
-        
-        document.getElementById('forecast_checkbox').addEventListener('change', function () {
+
+        document.getElementById('soc_forecast_checkbox').addEventListener('change', function () {
             socChart.data.datasets[3].hidden = !this.checked;
             socChart.update();
         });
 
-        document.getElementById('solar_forecast_checkbox').addEventListener('change', function () {
+        document.getElementById('pv_yield_checkbox').addEventListener('change', function () {
             socChart.data.datasets[4].hidden = !this.checked;
             socChart.update();
         });
 
-        document.getElementById('pv_yield_checkbox').addEventListener('change', function () {
+        document.getElementById('pv_forecast_checkbox').addEventListener('change', function () {
             socChart.data.datasets[5].hidden = !this.checked;
             socChart.update();
         });
 
         document.getElementById('pv_min_target_checkbox').addEventListener('change', function () {
             socChart.data.datasets[6].hidden = !this.checked;
+            socChart.update();
+        });
+
+        document.getElementById('pv_max_target_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[7].hidden = !this.checked;
             socChart.update();
         });
     });

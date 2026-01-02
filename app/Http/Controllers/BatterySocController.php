@@ -46,67 +46,76 @@ class BatterySocController extends Controller
 
         $today = Carbon::today()->toDateString();
         $pvYield = PvYield::where('date', $today)->pluck('kwh', 'hour');
-        $solarForecast = SolarForecast::where('date', $today)->pluck('kwh', 'hour');
-        $lastForecastHour = $solarForecast->keys()->last();
 
-        $currentSoc = $chartData->get('current', collect());
-        $lastKnownSoc = null;
-        $lastKnownHour = -1;
+        $solarProduction = [
+            8  => 3.37,
+            9  => 6.66,
+            10 => 11.30,
+            11 => 16.95,
+            12 => 23.27,
+            13 => 29.51,
+            14 => 34.99,
+            15 => 39.46,
+            16 => 42.75,
+            17 => 44.77,
+            18 => 45.78,
+            19 => 46.00,
+        ];
 
-        if ($currentSoc->isNotEmpty()) {
-            $lastKnownHour = $currentSoc->keys()->last();
-            $lastKnownSoc = $currentSoc->get($lastKnownHour);
-        }
+        $pvForecastKwh = collect();
+        $lastYieldHour = $pvYield->keys()->last();
+        $lastYieldValue = $pvYield->last();
 
-        $forecastData = collect();
-        if ($lastKnownSoc !== null && $lastForecastHour !== null) {
-            $forecastData = $currentSoc->map(function ($soc, $hour) {
-                return $soc;
-            });
+        if ($lastYieldValue !== null && isset($solarProduction[$lastYieldHour]) && $solarProduction[$lastYieldHour] > 0) {
+            //$pvForecastKwh = $pvYield->copy();
 
-            $predictedSoc = $lastKnownSoc;
-            for ($hour = $lastKnownHour + 1; $hour <= $lastForecastHour; $hour++) {
-                $lastHourKwh = $solarForecast->get($hour - 1, 0);
-                $currentHourKwh = $solarForecast->get($hour, 0);
-                $hourlyGeneration = $currentHourKwh - $lastHourKwh;
-
-                $charge = $hourlyGeneration / 0.4193;
-                $predictedSoc += $charge;
-                $predictedSoc = min(100, $predictedSoc);
-                $forecastData->put($hour, round($predictedSoc));
+            foreach($solarProduction as $hour => $production) {
+                if ($hour > $lastYieldHour) {
+                    $pvForecastKwh[$hour] = round(($lastYieldValue / $solarProduction[$lastYieldHour]) * $production, 2);
+                }
             }
         }
 
-        $solarProduction = [
-            8  => 1.28,
-            9  => 1.92,
-            10 => 2.38,
-            11 => 2.74,
-            12 => 2.88, // Peak
-            13 => 2.74,
-            14 => 2.19,
-            15 => 1.74,
-            16 => 1.01,
-            17 => 0.64,
-            18 => 0.37,
-            19 => 0.11
-        ];
-        $pvMinTarget = collect();
-        $pvMinTargetKwh = collect();
-        $thour = 0;
-        foreach ($solarProduction as $hour => $production) {
-            $thour = $thour + $production;
-            $pvMinTarget->put($hour, $thour / 0.4193);
-            $pvMinTargetKwh->put($hour, $thour);
+        $conversionFactor = 0.4193;
+
+        // SOC Forecast Calculation
+        $socForecast = collect();
+        $socForecastKwh = collect();
+        $currentSoc = $chartData->get('current');
+        if ($currentSoc && $currentSoc->isNotEmpty()) {
+            $lastCurrentSocHour = $currentSoc->keys()->last();
+            $lastCurrentSocValue = $currentSoc->last();
+
+            $pvForecast = $pvForecastKwh->map(fn($kwh) => $kwh / $conversionFactor);
+            $pvForecastAtLastSocHour = $pvForecast->get($lastCurrentSocHour, 0);
+            $pvForecastKwhAtLastSocHour = $pvForecastKwh->get($lastCurrentSocHour, 0);
+            $lastCurrentSocInKwh = $lastCurrentSocValue * $conversionFactor;
+
+            $hours = collect(range(0, 19));
+            $hours->each(function ($hour) use ($socForecast, $socForecastKwh, $lastCurrentSocHour, $lastCurrentSocValue, $lastCurrentSocInKwh, $pvForecast, $pvForecastKwh, $pvForecastAtLastSocHour, $pvForecastKwhAtLastSocHour) {
+                if ($hour >= $lastCurrentSocHour) {
+                    $forecastedIncrease = $pvForecast->get($hour, 0) - $pvForecastAtLastSocHour;
+                    $socForecastValue = min(100, $lastCurrentSocValue + $forecastedIncrease);
+                    $socForecast->put($hour, $socForecastValue);
+
+                    $forecastedKwhIncrease = $pvForecastKwh->get($hour, 0) - $pvForecastKwhAtLastSocHour;
+                    $socForecastKwhValue = $lastCurrentSocInKwh + $forecastedKwhIncrease;
+                    $socForecastKwh->put($hour, $socForecastKwhValue);
+                }
+            });
         }
 
-        $chartData->put('forecast', $forecastData);
-        $chartData->put('solar_forecast', $solarForecast->map(fn($kwh) => $kwh / 0.4193));
-        $chartData->put('pv_yield', $pvYield->map(fn($kwh) => $kwh / 0.4193));
-        $chartData->put('solar_forecast_kwh', $solarForecast->map(fn($kwh) => (float) $kwh));
-        $chartData->put('pv_yield_kwh', $pvYield->map(fn($kwh) => (float) $kwh));
-        $chartData->put('pv_min_target', $pvMinTarget);
-        $chartData->put('pv_min_target_kwh', $pvMinTargetKwh);
+        $chartData->put('pv_yield', $pvYield->map(fn($kwh) => $kwh / $conversionFactor));
+        $chartData->put('pv_yield_kwh', $pvYield);
+        $chartData->put('pv_forecast', $pvForecastKwh->map(fn($kwh) => $kwh / $conversionFactor));
+        $chartData->put('pv_forecast_kwh', $pvForecastKwh);
+        $chartData->put('pv_min_target', collect($solarProduction)->map(fn($prod) => ($prod / 2) / $conversionFactor));
+        $chartData->put('pv_min_target_kwh', collect($solarProduction)->map(fn($prod) => $prod/2));
+        $chartData->put('pv_max_target', collect($solarProduction)->map(fn($prod) => $prod / $conversionFactor));
+        $chartData->put('pv_max_target_kwh', collect($solarProduction));
+        $chartData->put('soc_forecast', $socForecast);
+        $chartData->put('soc_forecast_kwh', $socForecastKwh);
+
 
         return view('battery_soc.index', compact('socData', 'chartData'));
     }
