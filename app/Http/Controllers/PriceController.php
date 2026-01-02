@@ -20,6 +20,13 @@ class PriceController extends Controller
     private const SOC_TO_KWH_FACTOR = 0.4193;
     private const CACHE_MINUTES = 30;
 
+    /**
+     * Get predicted prices and battery charging/discharging strategy.
+     *
+     * @param AmberService $amberService
+     * @param FoxEssService $foxEssService
+     * @return JsonResponse
+     */
     public function getPredictedPrices(AmberService $amberService, FoxEssService $foxEssService): JsonResponse
     {
         $now = Carbon::now();
@@ -144,6 +151,11 @@ class PriceController extends Controller
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
 
+        if ((!isset($finalSellPlan['sell_plan']) || empty($finalSellPlan['sell_plan'])) && $batterySettings->forced_discharge) {
+            $batterySettings->forced_discharge = false;
+            $batterySettings->save();
+        }
+
         // Cache all the results for polling
         Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('remaining_solar_generation_today', round($remainingGeneration, 2), now()->addMinutes(self::CACHE_MINUTES));
@@ -165,7 +177,7 @@ class PriceController extends Controller
         }
     
         $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $currentHour);
-        $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour);
+        $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour, $batteryStrategies);
 
         // Return the fresh data directly
         return response()->json([
@@ -181,11 +193,23 @@ class PriceController extends Controller
         ]);
     }
 
+    /**
+     * Get active battery strategies.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
     private function getActiveBatteryStrategies()
     {
         return BatteryStrategy::where('is_active', true)->get();
     }
 
+    /**
+     * Calculate the amount of kWh to sell based on the current state of charge (SoC) and the given strategy.
+     *
+     * @param float $soc
+     * @param \App\Models\BatteryStrategy $strategy
+     * @return float
+     */
     private function calculateKwhToSell($soc, $strategy)
     {
         if ($soc > $strategy->soc_lower_bound) {
@@ -195,6 +219,13 @@ class PriceController extends Controller
         return 0;
     }
 
+    /**
+     * Get the lowest current sell price from the sell plan.
+     *
+     * @param array|null $sellPlan
+     * @param int $currentHour
+     * @return float
+     */
     private function getLowestCurrentSellPrice($sellPlan, $currentHour)
     {
         if (!$sellPlan || !isset($sellPlan['sell_plan'])) {
@@ -215,11 +246,20 @@ class PriceController extends Controller
         return $lowestPrice;
     }
 
-    private function updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour)
+    /**
+     * Update the target price in the battery settings.
+     *
+     * @param \App\BatterySetting $batterySettings
+     * @param float $lowestCurrentSellPrice
+     * @param float $soc
+     * @param int $currentHour
+     * @param \Illuminate\Support\Collection $strategies
+     * @return void
+     */
+    private function updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour, $strategies)
     {
         if (!$batterySettings) return;
 
-        $strategies = $this->getActiveBatteryStrategies();
         $eveningPeakStrategy = $strategies->firstWhere('name', 'Evening Peak');
         $flexibleEveningStrategy = $strategies->firstWhere('name', 'Flexible Evening');
         $overnightStrategy = $strategies->firstWhere('name', 'Overnight');
@@ -323,6 +363,13 @@ class PriceController extends Controller
         return $mergedPlan;
     }
 
+    /**
+     * Run a simulation of the battery charging/discharging strategy.
+     *
+     * @param Request $request
+     * @param AmberService $amberService
+     * @return \Illuminate\Contracts\View\View|JsonResponse
+     */
     public function simulation(Request $request, AmberService $amberService)
     {
         if ($request->isMethod('get') && !$request->hasAny(['soc', 'time'])) {
