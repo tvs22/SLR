@@ -54,6 +54,10 @@
                     <input class="form-check-input" type="checkbox" id="pv_yield_checkbox" value="pv_yield" checked>
                     <label class="form-check-label" for="pv_yield_checkbox">PV Yield</label>
                 </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="pv_min_target_checkbox" value="pv_min_target" checked>
+                    <label class="form-check-label" for="pv_min_target_checkbox">PV Min Target</label>
+                </div>
             </div>
         </div>
     </div>
@@ -120,6 +124,7 @@
 
         const solarForecastKwhData = formatData(chartData.solar_forecast_kwh, labels);
         const pvYieldKwhData = formatData(chartData.pv_yield_kwh, labels);
+        const pvMinTargetKwhData = formatData(chartData.pv_min_target_kwh, labels);
 
         const datasets = [
             {
@@ -169,6 +174,14 @@
                 backgroundColor: 'rgba(255, 159, 64, 0.2)',
                 hidden: !document.getElementById('pv_yield_checkbox').checked,
                 yAxisID: 'y',
+            },
+            {
+                label: 'PV Min Target',
+                data: formatData(chartData.pv_min_target, labels),
+                borderColor: 'rgba(0, 255, 0, 1)',
+                backgroundColor: 'rgba(0, 255, 0, 0.2)',
+                hidden: !document.getElementById('pv_min_target_checkbox').checked,
+                yAxisID: 'y',
             }
         ];
 
@@ -205,7 +218,13 @@
                                     if (kwhValue !== null) {
                                         label += ' (' + kwhValue.toFixed(2) + ' kWh)';
                                     }
+                                } else if (datasetIndex === 6) { // PV Min Target
+                                    const kwhValue = pvMinTargetKwhData[dataIndex];
+                                    if (kwhValue !== null) {
+                                        label += ' (' + kwhValue.toFixed(2) + ' kWh)';
+                                    }
                                 }
+
                                 return label;
                             }
                         }
@@ -228,6 +247,20 @@
                         },
                         min: 0,
                         max: 100
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: false,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'KWH'
+                        },
+                        min: 0,
+                        max: 10,
+                        grid: {
+                            drawOnChartArea: false
+                        }
                     }
                 }
             }
@@ -260,6 +293,11 @@
 
         document.getElementById('pv_yield_checkbox').addEventListener('change', function () {
             socChart.data.datasets[5].hidden = !this.checked;
+            socChart.update();
+        });
+
+        document.getElementById('pv_min_target_checkbox').addEventListener('change', function () {
+            socChart.data.datasets[6].hidden = !this.checked;
             socChart.update();
         });
     });

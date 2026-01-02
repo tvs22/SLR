@@ -56,11 +56,14 @@
                                 </a>
 
                                 <div class="dropdown-menu dropdown-menu-end" aria-labelledby="utilitiesDropdown">
-                                    <a class="dropdown-item" href="{{ route('battery-settings.index') }}">
-                                        {{ __('Battery Settings') }}
-                                    </a>
                                     <a class="dropdown-item" href="{{ route('battery_soc.index') }}">
-                                        {{ __('Battery SOC Management') }}
+                                        {{ __('SOC Management') }}
+                                    </a>
+                                    <a class="dropdown-item" href="{{ route('battery-strategies.index') }}">
+                                        {{ __('Strategies') }}
+                                    </a>
+                                    <a class="dropdown-item" href="{{ route('battery-settings.index') }}">
+                                        {{ __('Settings') }}
                                     </a>
                                     <a class="dropdown-item" href="{{ route('solar-forecasts.index') }}">
                                         {{ __('Solar Forecasts') }}

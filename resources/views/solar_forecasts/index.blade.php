@@ -10,6 +10,7 @@
             <div class="pull-right">
                 <a class="btn btn-success my-2" href="{{ route('solar-forecasts.create') }}" style="padding: 10px;"> Create New Solar Forecast</a>
                 <a class="btn btn-info my-2" href="{{ route('solar-forecasts.get-forecasts') }}" style="padding: 10px;">Get Latest Forecast</a>
+                <a class="btn btn-danger my-2" href="{{ route('solar-forecasts.delete-all') }}" onclick="return confirm('Are you sure you want to delete all solar forecasts?')" style="padding: 10px;">Delete All</a>
             </div>
         </div>
     </div>

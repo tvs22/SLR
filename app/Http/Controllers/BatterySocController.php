@@ -77,11 +77,22 @@ class BatterySocController extends Controller
             }
         }
 
+        $pvMinTarget = collect();
+        $pvMinTargetKwh = collect();
+        $thour = -2;
+        for ($hour = 8; $hour <= 18; $hour++) {
+            $thour = $thour + 2;
+            $pvMinTarget->put($hour, $thour / 0.4193);
+            $pvMinTargetKwh->put($hour, $thour);
+        }
+
         $chartData->put('forecast', $forecastData);
         $chartData->put('solar_forecast', $solarForecast->map(fn($kwh) => $kwh / 0.4193));
         $chartData->put('pv_yield', $pvYield->map(fn($kwh) => $kwh / 0.4193));
         $chartData->put('solar_forecast_kwh', $solarForecast->map(fn($kwh) => (float) $kwh));
         $chartData->put('pv_yield_kwh', $pvYield->map(fn($kwh) => (float) $kwh));
+        $chartData->put('pv_min_target', $pvMinTarget);
+        $chartData->put('pv_min_target_kwh', $pvMinTargetKwh);
 
         return view('battery_soc.index', compact('socData', 'chartData'));
     }

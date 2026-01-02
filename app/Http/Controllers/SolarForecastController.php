@@ -145,4 +145,17 @@ class SolarForecastController extends Controller
 
         return redirect()->route('solar-forecasts.index')->with('error', 'Could not fetch solar forecast data.');
     }
+
+    /**
+     * Remove all resources from storage.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function deleteAll()
+    {
+        SolarForecast::truncate();
+
+        return redirect()->route('solar-forecasts.index')
+            ->with('success', 'All solar forecasts deleted successfully.');
+    }
 }
