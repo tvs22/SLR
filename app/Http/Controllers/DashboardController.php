@@ -19,7 +19,6 @@ class DashboardController extends Controller
 
     public function index()
     {
-        //dd(BatteryStrategy::where('is_active', true)->whereNotNull('sell_start_time')->get()[0]);
         return view('dashboard', [
             'battery' => BatterySetting::latest()->first(),
             'prices' => Cache::get('latest_prices'),
@@ -29,8 +28,8 @@ class DashboardController extends Controller
             'soc' => Cache::get('soc'),
             'remaining_solar_generation_today' => Cache::get('remaining_solar_generation_today'),
             'forecast_soc' => Cache::get('forecast_soc'),
-            'kwh_to_buy' => Cache::get('kwh_to_buy'),
-            'buyStrategy' => Cache::get('buy_strategy'),
+            'essential_buy_plan' => Cache::get('essential_buy_plan'),
+            'target_buy_plan' => Cache::get('target_buy_plan'),
             'evening_sell_strategy' => Cache::get('evening_sell_strategy'),
             'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),
             'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
@@ -49,8 +48,8 @@ class DashboardController extends Controller
             'soc' => Cache::get('soc'),
             'remaining_solar_generation_today' => Cache::get('remaining_solar_generation_today'),
             'forecast_soc' => Cache::get('forecast_soc'),
-            'kwh_to_buy' => Cache::get('kwh_to_buy'),
-            'buyStrategy' => Cache::get('buy_strategy'),
+            'essential_buy_plan' => Cache::get('essential_buy_plan'),
+            'target_buy_plan' => Cache::get('target_buy_plan'),
             'evening_sell_strategy' => Cache::get('evening_sell_strategy'),
             'late_evening_sell_strategy' => Cache::get('late_evening_sell_strategy'),
             'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),

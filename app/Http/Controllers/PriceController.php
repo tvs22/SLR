@@ -26,7 +26,7 @@ class PriceController extends Controller
         $batterySettings = BatterySetting::latest()->first();
         $soc = $foxEssService->getSoc();
         $sellPlans = [];
-        $buyStrategy = ['buy_plan' => []];
+        $buyStrategy = ['essential_buy_plan' => [], 'target_buy_plan' => []];
 
         if ($soc !== null) {
             $batteryStrategies = $this->getActiveBatteryStrategies();
@@ -41,7 +41,8 @@ class PriceController extends Controller
         $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $now->hour, $this->getActiveBatteryStrategies());
 
         return response()->json([
-            'buyStrategy' => $buyStrategy,
+            'essential_buy_plan' => $buyStrategy['essential_buy_plan'],
+            'target_buy_plan' => $buyStrategy['target_buy_plan'],
             'evening_sell_strategy' => $sellPlans['Evening Peak'] ?? null,
             'late_evening_sell_strategy' => $sellPlans['Flexible Evening'] ?? null,
             'late_night_sell_strategy' => $sellPlans['Overnight'] ?? null,
@@ -192,7 +193,8 @@ class PriceController extends Controller
         Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('remaining_solar_generation_today', $buyStrategy ['future_generation_kwh'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('forecast_soc', $soc+$buyStrategy ['future_generation_percent'], now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('buy_strategy', $buyStrategy[0], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('essential_buy_plan', $buyStrategy['essential_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('target_buy_plan', $buyStrategy['target_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
 
         $keyMap = [
             'Evening Peak' => 'evening_sell_strategy',
@@ -221,13 +223,14 @@ class PriceController extends Controller
         $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
 
         $currentYield = DB::table('pv_yields')->where('date', $today)->where('hour', $currentHour)->first();
-        $buyPlan = ['buy_plan' => []];
+        $essentialBuyPlan = ['buy_plan' => []];
+        $targetBuyPlan = ['buy_plan' => []];
         $futureGenerationKwh = 0;
         $futureGenerationPercent = 0;
-
         if (!$currentYield) {
             return [
-                $buyPlan,
+                'essential_buy_plan' => $essentialBuyPlan,
+                'target_buy_plan' => $targetBuyPlan,
                 'future_generation_kwh' => $futureGenerationKwh,
                 'future_generation_percent' => $futureGenerationPercent,
             ];
@@ -236,7 +239,7 @@ class PriceController extends Controller
         $currentYieldKwh = $currentYield->kwh;
         
 
-        $lowSolarProduction = [
+        $solarProduction = [
             8  => 3.37,
             9  => 6.66,
             10 => 11.30,
@@ -251,23 +254,35 @@ class PriceController extends Controller
             19 => 46.00,
         ];
 
-        if (isset($lowSolarProduction[$currentHour]) && $lowSolarProduction[$currentHour] > 0) {
-            $targetKwh = end($lowSolarProduction);
+        if (isset($solarProduction[$currentHour]) && $solarProduction[$currentHour] > 0) {
+            $targetKwh = end($solarProduction);
             
-            $futureGenerationKwh = ($currentYieldKwh / $lowSolarProduction[$currentHour]) * $targetKwh;
+            $futureGenerationKwh = ($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh;
             $futureGenerationPercent = round($futureGenerationKwh / self::SOC_TO_KWH_FACTOR);
-            $soc=$soc*self::SOC_TO_KWH_FACTOR;
-            $kwhToBuy = max(0, $targetKwh - $futureGenerationKwh -$soc);
-            if ($kwhToBuy > 0) {
-                $buyPlan = $amberService->calculateOptimalCharging(
-                    $kwhToBuy,
+            $socInKwh = $soc * self::SOC_TO_KWH_FACTOR;
+            $essentialKwhTarget = 20;
+            // Essential Buy Plan
+            $kwhToBuyEssential = max(0, $essentialKwhTarget - $futureGenerationKwh - $socInKwh);
+            if ($kwhToBuyEssential > 0) {
+                $essentialBuyPlan = $amberService->calculateOptimalCharging(
+                    $kwhToBuyEssential,
+                    $batterySettings->longterm_target_electric_price_cents
+                );
+            }
+
+            // Target Buy Plan
+            $kwhToBuyTarget = max(0, $targetKwh - $futureGenerationKwh - $socInKwh - $kwhToBuyEssential);
+            if ($kwhToBuyTarget > 0) {
+                $targetBuyPlan = $amberService->calculateOptimalCharging(
+                    $kwhToBuyTarget,
                     $batterySettings->longterm_target_electric_price_cents
                 );
             }
         }
 
         return [
-            $buyPlan,
+            'essential_buy_plan' => $essentialBuyPlan,
+            'target_buy_plan' => $targetBuyPlan,
             'future_generation_kwh' => round($futureGenerationKwh, 2),
             'future_generation_percent' => $futureGenerationPercent,
         ];

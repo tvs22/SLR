@@ -30,14 +30,13 @@ function getPriceClass($price) {
 
     <div class="tab-content" id="plan-tabs-content">
         <div class="tab-pane fade" id="buy-plan-content" role="tabpanel" aria-labelledby="buy-plan-tab">
-            {{-- Buy Plan --}}
             <div class="row mt-4">
                 <div class="col-12">
-                    <div class="card">
+                    <div class="card mb-4">
                         <div class="card-header">
-                            <h5>Buy Plan (30-Min Intervals)</h5>
+                            <h5>Essential Buy Plan (to 20kWh)</h5>
                         </div>
-                        <div class="card-body" id="buy-plan-container">
+                        <div class="card-body" id="essential-buy-plan-container">
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
@@ -47,7 +46,27 @@ function getPriceClass($price) {
                                         <th>Cost</th>
                                     </tr>
                                 </thead>
-                                <tbody id="buy-plan-body">
+                                <tbody id="essential-buy-plan-body">
+                                    {{-- Content will be injected by JS --}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Target Buy Plan</h5>
+                        </div>
+                        <div class="card-body" id="target-buy-plan-container">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Price (c/kWh)</th>
+                                        <th>kWh to Buy</th>
+                                        <th>Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="target-buy-plan-body">
                                     {{-- Content will be injected by JS --}}
                                 </tbody>
                             </table>
@@ -230,6 +249,52 @@ function getPriceClass($price) {
             }
         }
 
+        function renderBuyPlan(containerId, bodyId, planData) {
+            const container = document.getElementById(containerId);
+            const body = document.getElementById(bodyId);
+            body.innerHTML = '';
+            let totalKwh = 0;
+
+            if (planData) {
+                if (planData.error) {
+                    container.innerHTML = `<p class="text-danger">${planData.error}</p>`;
+                } else if (planData.message) {
+                    container.innerHTML = `<p>${planData.message}</p>`;
+                } else if (planData.buy_plan && planData.buy_plan.length > 0) {
+                    planData.buy_plan.forEach(item => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${item.time}</td>
+                            <td>${item.price.toFixed(2)}</td>
+                            <td>${item.kwh.toFixed(2)}</td>
+                            <td>$${(item.cost / 100).toFixed(2)}</td>
+                        `;
+                        body.appendChild(row);
+                        totalKwh += item.kwh;
+                    });
+                } else {
+                    body.innerHTML = '<tr><td colspan="4" class="text-center">No buy plan available.</td></tr>';
+                }
+            } else {
+                body.innerHTML = '<tr><td colspan="4" class="text-center">No data available.</td></tr>';
+            }
+
+            const existingTfoot = body.parentElement.querySelector('tfoot');
+            if (existingTfoot) {
+                existingTfoot.remove();
+            }
+
+            const tfoot = document.createElement('tfoot');
+            tfoot.innerHTML = `
+                <tr>
+                    <td colspan="2"><strong>Total</strong></td>
+                    <td><strong>${totalKwh.toFixed(2)}</strong></td>
+                    <td></td>
+                </tr>
+            `;
+            body.parentElement.appendChild(tfoot);
+        }
+
         function renderDashboard(data) {
             // Prices & Status
             if (data.prices) {
@@ -253,32 +318,9 @@ function getPriceClass($price) {
             document.getElementById('today-forecast').textContent = data.todayForecast ? parseFloat(data.todayForecast).toFixed(2) + ' kWh' : '0.00 kWh';
             document.getElementById('tomorrow-forecast').textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
 
-            // Buy Plan
-            const buyPlanContainer = document.getElementById('buy-plan-container');
-            const buyPlanBody = document.getElementById('buy-plan-body');
-            buyPlanBody.innerHTML = ''; 
-            if (data.buyStrategy) {
-                if (data.buyStrategy.error) {
-                    buyPlanContainer.innerHTML = `<p class="text-danger">${data.buyStrategy.error}</p>`;
-                } else if (data.buyStrategy.message) {
-                    buyPlanContainer.innerHTML = `<p>${data.buyStrategy.message}</p>`;
-                } else if (data.buyStrategy.buy_plan && data.buyStrategy.buy_plan.length > 0) {
-                    data.buyStrategy.buy_plan.forEach(item => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${item.time}</td>
-                            <td>${item.price.toFixed(2)}</td>
-                            <td>${item.kwh.toFixed(2)}</td>
-                            <td>$${(item.cost / 100).toFixed(2)}</td>
-                        `;
-                        buyPlanBody.appendChild(row);
-                    });
-                } else {
-                    buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No buy plan available.</td></tr>';
-                }
-            } else {
-                buyPlanBody.innerHTML = '<tr><td colspan="4" class="text-center">No data available.</td></tr>';
-            }
+            // Buy Plans
+            renderBuyPlan('essential-buy-plan-container', 'essential-buy-plan-body', data.essential_buy_plan);
+            renderBuyPlan('target-buy-plan-container', 'target-buy-plan-body', data.target_buy_plan);
 
             // Sell Plan
             const sellPlanBody = document.getElementById('sell-plan-body');
