@@ -136,8 +136,9 @@
             {
                 label: 'SOC Plan',
                 data: formatData(chartData.soc_plans, labels),
-                borderColor: 'rgba(190, 100, 230, 1)',
-                backgroundColor: 'rgba(190, 100, 230, 0.2)',
+                borderColor: 'rgba(190, 100, 230, 0.4)',
+                backgroundColor: 'rgba(190, 100, 230, 0.1)',
+                borderDash: [5, 5],
                 hidden: !document.getElementById('soc_plan_checkbox').checked,
             },
             {
@@ -164,7 +165,7 @@
             {
                 label: 'PV Yield',
                 data: formatData(chartData.pv_yield, labels),
-                borderColor: 'rgba(255, 159, 64,1)',
+                borderColor: 'rgba(255, 159, 64, 1)',
                 backgroundColor: 'rgba(255, 159, 64, 0.2)',
                 hidden: !document.getElementById('pv_yield_checkbox').checked,
             },
@@ -178,15 +179,17 @@
             {
                 label: 'PV Min Target',
                 data: formatData(chartData.pv_min_target, labels),
-                borderColor: 'rgba(148, 0, 211, 1)',
-                backgroundColor: 'rgba(148, 0, 211, 0.2)',
+                borderColor: 'rgba(148, 0, 211, 0.4)',
+                backgroundColor: 'rgba(148, 0, 211, 0.1)',
+                borderDash: [5, 5],
                 hidden: !document.getElementById('pv_min_target_checkbox').checked,
             },
             {
                 label: 'PV Max Target',
                 data: formatData(chartData.pv_max_target, labels),
-                borderColor: 'rgba(148, 0, 211, 1)',
-                backgroundColor: 'rgba(148, 0, 211, 0.2)',
+                borderColor: 'rgba(148, 0, 211, 0.4)',
+                backgroundColor: 'rgba(148, 0, 211, 0.1)',
+                borderDash: [5, 5],
                 hidden: !document.getElementById('pv_max_target_checkbox').checked,
             }
         ];
