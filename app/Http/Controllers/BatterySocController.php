@@ -67,7 +67,7 @@ class BatterySocController extends Controller
         $lastYieldValue = $pvYield->last();
 
         if ($lastYieldValue !== null && isset($solarProduction[$lastYieldHour]) && $solarProduction[$lastYieldHour] > 0) {
-            //$pvForecastKwh = $pvYield->copy();
+            $pvForecastKwh = clone $pvYield;
 
             foreach($solarProduction as $hour => $production) {
                 if ($hour > $lastYieldHour) {

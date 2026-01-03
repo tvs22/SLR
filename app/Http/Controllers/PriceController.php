@@ -24,45 +24,30 @@ class PriceController extends Controller
     {
         $now = Carbon::now();
         $batterySettings = BatterySetting::latest()->first();
-        $solarData = $this->getSolarGenerationData($now, $foxEssService);
-
-        if (!$solarData) {
-            $soc = $foxEssService->getSoc();
-            $kwhToBuy = $soc !== null ? round((100 - $soc) * self::SOC_TO_KWH_FACTOR, 2) : 0;
-            $solarData = [
-                'soc' => $soc,
-                'remaining_solar_generation_today' => 0,
-                'forecast_soc' => $soc,
-                'kwh_to_buy' => $kwhToBuy,
-            ];
-        }
-
-        $soc = $solarData['soc'];
+        //$soc = $foxEssService->getSoc();
+        $soc=18;
         $sellPlans = [];
         $buyStrategy = ['buy_plan' => []];
 
         if ($soc !== null) {
             $batteryStrategies = $this->getActiveBatteryStrategies();
             $sellPlans = $this->calculateSellPlans($soc, $now, $amberService, $batterySettings, $batteryStrategies);
-
-            if ($solarData['kwh_to_buy'] > 0) {
-                $buyStrategy = $this->pvYieldBackfill($amberService, $batterySettings);
-            }
+            $buyStrategy = $this->pvYieldBackfill($soc,$amberService, $batterySettings);
         }
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
         $this->updateBatteryStatus($batterySettings, $finalSellPlan, $now);
-        $this->cacheResults($solarData, $buyStrategy, $sellPlans);
+        $this->cacheResults($soc,$buyStrategy, $sellPlans);
         $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $now->hour);
         $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $now->hour, $this->getActiveBatteryStrategies());
 
-        return response()->json(array_merge($solarData, [
+        return response()->json([
             'buyStrategy' => $buyStrategy,
             'evening_sell_strategy' => $sellPlans['Evening Peak'] ?? null,
             'late_evening_sell_strategy' => $sellPlans['Flexible Evening'] ?? null,
             'late_night_sell_strategy' => $sellPlans['Overnight'] ?? null,
             'lowest_current_sell_price' => $lowestCurrentSellPrice,
-        ]));
+        ]);
     }
 
     public function simulation(Request $request, AmberService $amberService): JsonResponse
@@ -107,108 +92,73 @@ class PriceController extends Controller
 
     private function calculateSellPlans(float $soc, Carbon $now, AmberService $amberService, BatterySetting $batterySettings, $batteryStrategies): array
     {
-        $sellPlans = [];
+        $allPotentialPlans = [];
 
+        // First, calculate a potential plan for every active strategy
+        foreach ($batteryStrategies as $strategy) {
+            $kwhToSell = $this->calculateKwhToSell($soc, $strategy);
+            $plan = null;
+
+            if ($kwhToSell > 0) {
+                $startTime = Carbon::parse($strategy->sell_start_time);
+                $endTime = Carbon::parse($strategy->sell_end_time);
+                if ($endTime->lt($startTime)) {
+                    $endTime->addDay();
+                }
+
+                $effectiveStart = $now->max($startTime);
+
+                if ($effectiveStart < $endTime) {
+                    $plan = $amberService->calculateOptimalDischarging(
+                        $kwhToSell,
+                        $batterySettings->longterm_target_price_cents,
+                        $effectiveStart,
+                        $endTime
+                    );
+                }
+            }
+            $allPotentialPlans[$strategy->name] = $plan;
+        }
+
+        $finalSellPlans = [];
+
+        // Now, iterate through the groups and decide which plan to use
         foreach ($batteryStrategies->groupBy('strategy_group') as $group => $strategies) {
-            $bestPlan = null;
-            $bestPlanRevenue = -1;
-            $strategyName = '';
-
-            foreach ($strategies as $strategy) {
-                $kwhToSell = $this->calculateKwhToSell($soc, $strategy);
-                $strategyName = $strategy->name;
-
-                if ($kwhToSell > 0) {
-                    $startTime = Carbon::parse($strategy->sell_start_time);
-                    $endTime = Carbon::parse($strategy->sell_end_time);
-                    if ($endTime->lt($startTime)) {
-                        $endTime->addDay();
-                    }
-
-                    $effectiveStart = $now->max($startTime);
-
-                    if ($effectiveStart < $endTime) {
-                        $plan = $amberService->calculateOptimalDischarging(
-                            $kwhToSell,
-                            $batterySettings->longterm_target_price_cents,
-                            $effectiveStart,
-                            $endTime
-                        );
-                        if ($group && isset($plan['total_revenue'])) {
-                            if ($plan['total_revenue'] > $bestPlanRevenue) {
-                                $bestPlan = $plan;
-                                $bestPlanRevenue = $plan['total_revenue'];
-                            }
-                        } else {
-                            $sellPlans[$strategyName] = $plan;
-                        }
-                    }
+            if (empty($group)) {
+                // For strategies without a group, just add their plan
+                foreach ($strategies as $strategy) {
+                    $finalSellPlans[$strategy->name] = $allPotentialPlans[$strategy->name];
                 }
-            }
-
-            if ($bestPlan) {
-                $sellPlans[$strategyName] = $bestPlan;
-            }
-        }
-
-        return $sellPlans;
-    }
-
-    private function getSolarGenerationData(Carbon $now, FoxEssService $foxEssService): ?array
-    {
-        $today = $now->toDateString();
-        $currentHour = $now->hour;
-        $minute = $now->minute;
-
-        $forecastsToday = SolarForecast::where('date', $today)->orderBy('hour', 'asc')->get();
-
-        if ($forecastsToday->isEmpty()) {
-            return null;
-        }
-
-        $totalDayGeneration = $forecastsToday->last()->kwh;
-        $generatedSoFarToday = 0;
-
-        if ($currentHour < $forecastsToday->first()->hour) {
-            $generatedSoFarToday = 0;
-        } elseif ($currentHour >= $forecastsToday->last()->hour) {
-            $generatedSoFarToday = $totalDayGeneration;
-        } else {
-            $currentHourForecast = $forecastsToday->where('hour', $currentHour)->first();
-
-            if (!$currentHourForecast) {
-                $prevForecast = $forecastsToday->where('hour', '<', $currentHour)->last();
-                $generatedSoFarToday = $prevForecast ? $prevForecast->kwh : 0;
             } else {
-                $nextHourForecast = $forecastsToday->where('hour', $currentHour + 1)->first();
-                $kwhAtStartOfHour = $currentHourForecast->kwh;
+                // For strategies in a group, find the best one
+                $bestPlan = null;
+                $bestPlanRevenue = -1;
+                $bestStrategyName = null;
 
-                if ($nextHourForecast) {
-                    $kwhAtEndOfHour = $nextHourForecast->kwh;
-                    $generationDuringHour = $kwhAtEndOfHour - $kwhAtStartOfHour;
-                    $generatedSoFarToday = $kwhAtStartOfHour + ($generationDuringHour * ($minute / 60));
-                } else {
-                    $generatedSoFarToday = $currentHourForecast->kwh;
+                foreach ($strategies as $strategy) {
+                    $plan = $allPotentialPlans[$strategy->name];
+                    if (isset($plan['total_revenue']) && $plan['total_revenue'] > $bestPlanRevenue) {
+                        $bestPlan = $plan;
+                        $bestPlanRevenue = $plan['total_revenue'];
+                        $bestStrategyName = $strategy->name;
+                    }
+                }
+
+                // Add the best plan to the final list
+                if ($bestStrategyName) {
+                    $finalSellPlans[$bestStrategyName] = $bestPlan;
+                }
+                
+                // For all other strategies in the group, ensure their plan is null
+                foreach ($strategies as $strategy) {
+                    if ($strategy->name !== $bestStrategyName) {
+                        $finalSellPlans[$strategy->name] = null;
+                    }
                 }
             }
         }
 
-        $remainingGeneration = max(0, $totalDayGeneration - $generatedSoFarToday);
-        $soc = $foxEssService->getSoc();
-        $forecastSoc = null;
-        $kwhToBuy = null;
-
-        if ($soc !== null) {
-            $forecastSoc = min(100, round($soc + ($remainingGeneration / self::SOC_TO_KWH_FACTOR)));
-            $kwhToBuy = round((100 - $forecastSoc) * self::SOC_TO_KWH_FACTOR, 2);
-        }
-
-        return [
-            'soc' => $soc,
-            'remaining_solar_generation_today' => round($remainingGeneration, 2),
-            'forecast_soc' => $forecastSoc,
-            'kwh_to_buy' => $kwhToBuy,
-        ];
+        return $finalSellPlans;
     }
 
     private function updateBatteryStatus(BatterySetting $batterySettings, ?array $finalSellPlan, Carbon $now): void
@@ -232,19 +182,18 @@ class PriceController extends Controller
         if ($hasActiveSellPlan && $isWithinSellWindow) {
             $batterySettings->status = 'prioritize_charging';
             $batterySettings->save();
-        } elseif ((!isset($finalSellPlan['sell_plan']) || empty($finalSellPlan['sell_plan'])) && $batterySettings->forced_discharge) {
+        } elseif ((!isset($finalSellPlan['sell_plan']) || empty($finalSellPlan['sell_plan']))) {
             $batterySettings->status = 'self_sufficient';
             $batterySettings->save();
         }
     }
 
-    private function cacheResults(array $solarData, array $buyStrategy, array $sellPlans): void
+    private function cacheResults($soc,array $buyStrategy, array $sellPlans): void
     {
-        Cache::put('soc', $solarData['soc'], now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('remaining_solar_generation_today', $solarData['remaining_solar_generation_today'], now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('forecast_soc', $solarData['forecast_soc'], now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('kwh_to_buy', $solarData['kwh_to_buy'], now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('buy_strategy', $buyStrategy, now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('remaining_solar_generation_today', $buyStrategy ['future_generation_kwh'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('forecast_soc', $soc+$buyStrategy ['future_generation_percent'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('buy_strategy', $buyStrategy[0], now()->addMinutes(self::CACHE_MINUTES));
 
         $keyMap = [
             'Evening Peak' => 'evening_sell_strategy',
@@ -259,7 +208,7 @@ class PriceController extends Controller
         }
     }
 
-    public function pvYieldBackfill(AmberService $amberService, BatterySetting $batterySettings): array
+    public function pvYieldBackfill($soc,AmberService $amberService, BatterySetting $batterySettings): array
     {
         $now = Carbon::now();
         $today = $now->toDateString();
@@ -273,43 +222,56 @@ class PriceController extends Controller
         $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
 
         $currentYield = DB::table('pv_yields')->where('date', $today)->where('hour', $currentHour)->first();
+        $buyPlan = ['buy_plan' => []];
+        $futureGenerationKwh = 0;
+        $futureGenerationPercent = 0;
 
         if (!$currentYield) {
-            return ['buy_plan' => []];
+            return [
+                $buyPlan,
+                'future_generation_kwh' => $futureGenerationKwh,
+                'future_generation_percent' => $futureGenerationPercent,
+            ];
         }
 
         $currentYieldKwh = $currentYield->kwh;
+        
 
         $lowSolarProduction = [
-            8  => 1.28,
-            9  => 3.20,
-            10 => 5.58,
-            11 => 8.32,
-            12 => 11.20, // Peak
-            13 => 13.94,
-            14 => 16.13,
-            15 => 17.87,
-            16 => 18.88,
-            17 => 19.52,
-            18 => 19.89,
-            19 => 20
+            8  => 3.37,
+            9  => 6.66,
+            10 => 11.30,
+            11 => 16.95,
+            12 => 23.27,
+            13 => 29.51,
+            14 => 34.99,
+            15 => 39.46,
+            16 => 42.75,
+            17 => 44.77,
+            18 => 45.78,
+            19 => 46.00,
         ];
 
-        $estimatedGeneration = 0;
-        $targetKwh = $lowSolarProduction[19];
-        $yieldpredicthour=$currentHour;
-        if($currentHour>19)
-        $yieldpredicthour=19;
-        $futureGeneration = $currentYieldKwh/$lowSolarProduction[$yieldpredicthour]*$targetKwh;
-        $kwhToBuy = max(0, $targetKwh - $futureGeneration);
-        if ($kwhToBuy > 0) {
-            return $amberService->calculateOptimalCharging(
-                $kwhToBuy,
-                $batterySettings->longterm_target_electric_price_cents+5
-            );
+        if (isset($lowSolarProduction[$currentHour]) && $lowSolarProduction[$currentHour] > 0) {
+            $targetKwh = end($lowSolarProduction);
+            
+            $futureGenerationKwh = ($currentYieldKwh / $lowSolarProduction[$currentHour]) * $targetKwh;
+            $futureGenerationPercent = round($futureGenerationKwh / self::SOC_TO_KWH_FACTOR);
+            $soc=$soc*self::SOC_TO_KWH_FACTOR;
+            $kwhToBuy = max(0, $targetKwh - $futureGenerationKwh -$soc);
+            if ($kwhToBuy > 0) {
+                $buyPlan = $amberService->calculateOptimalCharging(
+                    $kwhToBuy,
+                    $batterySettings->longterm_target_electric_price_cents + 5
+                );
+            }
         }
 
-        return ['buy_plan' => []];
+        return [
+            $buyPlan,
+            'future_generation_kwh' => round($futureGenerationKwh, 2),
+            'future_generation_percent' => $futureGenerationPercent,
+        ];
     }
 
 
