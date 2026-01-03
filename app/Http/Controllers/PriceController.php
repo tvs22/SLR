@@ -245,7 +245,10 @@ class PriceController extends Controller
 
         $estimatedGeneration = 0;
         $targetKwh = $lowSolarProduction[19];
-        $futureGeneration = $currentYieldKwh/$lowSolarProduction[$currentHour]*$targetKwh;
+        $yieldpredicthour=$currentHour;
+        if($currentHour>19)
+        $yieldpredicthour=19;
+        $futureGeneration = $currentYieldKwh/$lowSolarProduction[$yieldpredicthour]*$targetKwh;
         $kwhToBuy = max(0, $targetKwh - $futureGeneration);
         if ($kwhToBuy > 0) {
             return $amberService->calculateOptimalCharging(
