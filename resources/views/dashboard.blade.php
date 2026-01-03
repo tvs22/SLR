@@ -105,7 +105,9 @@ function getPriceClass($price) {
             {{-- Battery Transactions --}}
             <div class="row mt-4">
                 <div class="col-12">
-                    @include('partials.battery-transactions')
+                    <div id="battery-transactions-container">
+                        @include('partials.battery-transactions')
+                    </div>
                 </div>
             </div>
         </div>
@@ -320,6 +322,40 @@ function getPriceClass($price) {
             renderSellStrategy('evening-sell-strategy-container', data.evening_sell_strategy);
             renderSellStrategy('late-evening-sell-strategy-container', data.late_evening_sell_strategy);
             renderSellStrategy('late-night-sell-strategy-container', data.late_night_sell_strategy);
+
+            // Battery Transactions
+            const transactionsContainer = document.getElementById('battery-transactions-container');
+            if (data.batteryTransactions && data.batteryTransactions.length > 0) {
+                const groupedTransactions = data.batteryTransactions.reduce((acc, transaction) => {
+                    const date = new Date(transaction.datetime).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+                    if (!acc[date]) {
+                        acc[date] = [];
+                    }
+                    acc[date].push(transaction);
+                    return acc;
+                }, {});
+
+                let transactionsHtml = '<div class="card"><div class="card-header"><h5>Recent Battery Transactions</h5></div><div class="card-body">';
+
+                for (const date in groupedTransactions) {
+                    transactionsHtml += `<h6 class="mt-3">${date}</h6>`;
+                    transactionsHtml += '<div class="table-responsive"><table class="table table-striped table-sm"><thead><tr><th>Time</th><th>Action</th><th>Price (c/kWh)</th></tr></thead><tbody>';
+
+                    groupedTransactions[date].forEach(transaction => {
+                        transactionsHtml += `
+                            <tr>
+                                <td>${new Date(transaction.datetime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td>${transaction.action}</td>
+                                <td>${parseFloat(transaction.price_cents).toFixed(2)}</td>
+                            </tr>`;
+                    });
+                    transactionsHtml += '</tbody></table></div>';
+                }
+                transactionsHtml += '</div></div>';
+                transactionsContainer.innerHTML = transactionsHtml;
+            } else {
+                transactionsContainer.innerHTML = '<div class="card"><div class="card-header"><h5>Recent Battery Transactions</h5></div><div class="card-body"><p>No recent transactions.</p></div></div>';
+            }
 
             timeRemaining = POLLING_INTERVAL / 1000;
         }
