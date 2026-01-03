@@ -261,7 +261,7 @@ class PriceController extends Controller
             if ($kwhToBuy > 0) {
                 $buyPlan = $amberService->calculateOptimalCharging(
                     $kwhToBuy,
-                    $batterySettings->longterm_target_electric_price_cents + 5
+                    $batterySettings->longterm_target_electric_price_cents
                 );
             }
         }

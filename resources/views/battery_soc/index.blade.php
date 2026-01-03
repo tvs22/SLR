@@ -237,7 +237,7 @@
                                 }
 
                                 if (kwhValue !== undefined && kwhValue !== null) {
-                                    label += ' (' + kwhValue.toFixed(2) + ' kWh)';
+                                    label += ' (' + parseFloat(kwhValue).toFixed(2) + ' kWh)';
                                 }
 
                                 return label;
