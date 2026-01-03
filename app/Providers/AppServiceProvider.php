@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\BatterySetting;
+use App\Models\BatteryStrategy;
+use App\Observers\BatterySettingObserver;
+use App\Observers\BatteryStrategyObserver;
 use Illuminate\Routing\UrlGenerator;
 use Illuminate\Support\ServiceProvider;
 
@@ -28,5 +32,8 @@ class AppServiceProvider extends ServiceProvider
         if (env('APP_ENV') == 'production') {
             $url->forceScheme('https');
         }
+
+        BatterySetting::observe(BatterySettingObserver::class);
+        BatteryStrategy::observe(BatteryStrategyObserver::class);
     }
 }
