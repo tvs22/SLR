@@ -32,6 +32,7 @@ class DashboardController extends Controller
             'target_buy_plan' => Cache::get('target_buy_plan'),
             'evening_sell_strategy' => Cache::get('evening_sell_strategy'),
             'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),
+            'kwh_to_buy_essential' => Cache::get('kwh_to_buy_essential'),
             'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
             'batteryStrategies' => BatteryStrategy::where('is_active', true)->whereNotNull('sell_start_time')->get(),
         ]);
@@ -54,6 +55,8 @@ class DashboardController extends Controller
             'late_evening_sell_strategy' => Cache::get('late_evening_sell_strategy'),
             'late_night_sell_strategy' => Cache::get('late_night_sell_strategy'),
             'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
+            'kwh_to_buy_essential' => Cache::get('kwh_to_buy_essential'),
+            'kwh_to_buy_target' => Cache::get('kwh_to_buy_target'),
         ]);
     }
 }

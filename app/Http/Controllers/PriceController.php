@@ -44,6 +44,8 @@ class PriceController extends Controller
         return response()->json([
             'essential_buy_plan' => $buyStrategy['essential_buy_plan'],
             'target_buy_plan' => $buyStrategy['target_buy_plan'],
+            'kwh_to_buy_essential' => $buyStrategy['kwh_to_buy_essential'] ?? 0,
+            'kwh_to_buy_target' => $buyStrategy['kwh_to_buy_target'] ?? 0,
             'evening_sell_strategy' => $sellPlans['Evening Peak'] ?? null,
             'late_evening_sell_strategy' => $sellPlans['Flexible Evening'] ?? null,
             'late_night_sell_strategy' => $sellPlans['Overnight'] ?? null,
@@ -196,7 +198,8 @@ class PriceController extends Controller
         Cache::put('forecast_soc', $soc+$buyStrategy ['future_generation_percent'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('essential_buy_plan', $buyStrategy['essential_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('target_buy_plan', $buyStrategy['target_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
-
+        Cache::put('kwh_to_buy_essential', $buyStrategy['kwh_to_buy_essential'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('kwh_to_buy_target', $buyStrategy['kwh_to_buy_target'], now()->addMinutes(self::CACHE_MINUTES));
         $keyMap = [
             'Evening Peak' => 'evening_sell_strategy',
             'Flexible Evening' => 'late_evening_sell_strategy',
@@ -228,12 +231,17 @@ class PriceController extends Controller
         $targetBuyPlan = ['buy_plan' => []];
         $futureGenerationKwh = 0;
         $futureGenerationPercent = 0;
+        $kwhToBuyEssential = 0;
+        $kwhToBuyTarget = 0;
+
         if (!$currentYield) {
             return [
                 'essential_buy_plan' => $essentialBuyPlan,
                 'target_buy_plan' => $targetBuyPlan,
                 'future_generation_kwh' => $futureGenerationKwh,
                 'future_generation_percent' => $futureGenerationPercent,
+                'kwh_to_buy_essential' => $kwhToBuyEssential,
+                'kwh_to_buy_target' => $kwhToBuyTarget,
             ];
         }
 
@@ -258,7 +266,7 @@ class PriceController extends Controller
         if (isset($solarProduction[$currentHour]) && $solarProduction[$currentHour] > 0) {
             $targetKwh = end($solarProduction);
             
-            $futureGenerationKwh = ($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh - $currentYieldKwh;
+            $futureGenerationKwh = (($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh) - $currentYieldKwh;
             $futureGenerationPercent = round($futureGenerationKwh / self::SOC_TO_KWH_FACTOR);
             $socInKwh = $soc * self::SOC_TO_KWH_FACTOR;
             $essentialKwhTarget = 20;
@@ -270,7 +278,6 @@ class PriceController extends Controller
                     $batterySettings->longterm_target_electric_price_cents
                 );
             }
-
             // Target Buy Plan
             $kwhToBuyTarget = max(0, $targetKwh - $futureGenerationKwh - $socInKwh - $kwhToBuyEssential);
             if ($kwhToBuyTarget > 0) {
@@ -286,6 +293,8 @@ class PriceController extends Controller
             'target_buy_plan' => $targetBuyPlan,
             'future_generation_kwh' => round($futureGenerationKwh, 2),
             'future_generation_percent' => $futureGenerationPercent,
+            'kwh_to_buy_essential' => round($kwhToBuyEssential, 2),
+            'kwh_to_buy_target' => round($kwhToBuyTarget, 2),
         ];
     }
 

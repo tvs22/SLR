@@ -35,6 +35,7 @@ function getPriceClass($price) {
                     <div class="card mb-4">
                         <div class="card-header">
                             <h5>Essential Buy Plan (to 20kWh)</h5>
+                             <p class="mb-0">Remaining to buy: <span id="essential-kwh-to-buy"></span></p>
                         </div>
                         <div class="card-body" id="essential-buy-plan-container">
                             <table class="table table-striped">
@@ -55,6 +56,7 @@ function getPriceClass($price) {
                     <div class="card">
                         <div class="card-header">
                             <h5>Target Buy Plan</h5>
+                             <p class="mb-0">Remaining to buy: <span id="target-kwh-to-buy"></span></p>
                         </div>
                         <div class="card-body" id="target-buy-plan-container">
                             <table class="table table-striped">
@@ -319,6 +321,8 @@ function getPriceClass($price) {
             document.getElementById('tomorrow-forecast').textContent = data.tomorrowForecast ? parseFloat(data.tomorrowForecast).toFixed(2) + ' kWh' : '0.00 kWh';
 
             // Buy Plans
+            document.getElementById('essential-kwh-to-buy').textContent = data.kwh_to_buy_essential ? parseFloat(data.kwh_to_buy_essential).toFixed(2) + ' kWh' : '0.00 kWh';
+            document.getElementById('target-kwh-to-buy').textContent = data.kwh_to_buy_target ? parseFloat(data.kwh_to_buy_target).toFixed(2) + ' kWh' : '0.00 kWh';
             renderBuyPlan('essential-buy-plan-container', 'essential-buy-plan-body', data.essential_buy_plan);
             renderBuyPlan('target-buy-plan-container', 'target-buy-plan-body', data.target_buy_plan);
 
