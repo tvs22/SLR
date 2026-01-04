@@ -213,7 +213,6 @@ function getPriceClass($price) {
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        let timeRemaining = 0;
 
         function getPriceClass(price) {
             if (price === null || price === undefined) return '';
@@ -412,39 +411,51 @@ function getPriceClass($price) {
                 .catch(error => console.error('Error fetching dashboard data:', error));
         }
 
-        function scheduleNextPoll() {
+        function getNextPollTime() {
             const now = new Date();
             const minutes = now.getMinutes();
-            const seconds = now.getSeconds();
-            
             const intervals = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
             let nextMinute = intervals.find(i => i > minutes);
-            if (nextMinute === undefined) nextMinute = 0;
+
+            if (nextMinute === undefined) {
+                nextMinute = 0;
+            }
 
             const nextPollTime = new Date();
             nextPollTime.setMinutes(nextMinute);
             nextPollTime.setSeconds(45);
+
             if (nextMinute === 0 && minutes > 55) {
                 nextPollTime.setHours(now.getHours() + 1);
             }
+            return nextPollTime;
+        }
 
-            const delay = nextPollTime.getTime() - now.getTime();
-            
-            timeRemaining = Math.round(delay / 1000);
+        function scheduleNextPoll() {
+            const nextPollTime = getNextPollTime();
+            const delay = nextPollTime.getTime() - (new Date()).getTime();
 
             setTimeout(() => {
                 pollDashboard();
-                setInterval(pollDashboard, 5 * 60 * 1000); 
+                scheduleNextPoll();
             }, delay);
         }
 
         function updateCountdown() {
-            if (timeRemaining > 0) {
-                timeRemaining--;
+            const nextPollTime = getNextPollTime();
+            const now = new Date();
+            let timeRemaining = Math.round((nextPollTime.getTime() - now.getTime()) / 1000);
+
+            if (timeRemaining < 0) {
+                timeRemaining = 0;
             }
+
             const minutes = Math.floor(timeRemaining / 60);
             const seconds = timeRemaining % 60;
-            document.getElementById('next-update-countdown').textContent = `${minutes}m ${seconds}s`;
+            const countdownElement = document.getElementById('next-update-countdown');
+            if(countdownElement) {
+                countdownElement.textContent = `${minutes}m ${seconds}s`;
+            }
         }
 
         document.getElementById('predict-prices-btn').addEventListener('click', function() {
