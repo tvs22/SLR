@@ -48,7 +48,7 @@ class DashboardController extends Controller
             'last_updated' => Cache::get('last_updated'),
             'todayForecast' => SolarForecast::whereDate('date', Carbon::today())->latest('hour')->first()->kwh ?? 0,
             'tomorrowForecast' => SolarForecast::whereDate('date', Carbon::tomorrow())->latest('hour')->first()->kwh ?? 0,
-            'soc' => 9,
+            'soc' => Cache::get('soc'),
             'remaining_solar_generation_today' => Cache::get('remaining_solar_generation_today'),
             'forecast_soc' => Cache::get('forecast_soc'),
             'essential_buy_plan' => Cache::get('essential_buy_plan'),
