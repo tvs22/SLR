@@ -213,7 +213,7 @@ function getPriceClass($price) {
 @push('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-
+        let nextPollTimestamp = null;
         function getPriceClass(price) {
             if (price === null || price === undefined) return '';
             if (price > 0) return 'text-success';
@@ -408,7 +408,11 @@ function getPriceClass($price) {
                 .then(data => {
                     renderDashboard(data)
                 })
-                .catch(error => console.error('Error fetching dashboard data:', error));
+                .catch(error => console.error('Error fetching dashboard data:', error))
+                .finally(() => {
+                    // Schedule the next poll only after the current one is finished
+                    scheduleNextPoll();
+                });
         }
 
         function getNextPollTime() {
@@ -432,17 +436,17 @@ function getPriceClass($price) {
         }
 
         function scheduleNextPoll() {
-            const nextPollTime = getNextPollTime();
-            const delay = nextPollTime.getTime() - (new Date()).getTime();
+            const nextPoll = getNextPollTime();
+            nextPollTimestamp = nextPoll.getTime();
+            const delay = nextPollTimestamp - Date.now();
 
             setTimeout(() => {
                 pollDashboard();
-                scheduleNextPoll();
             }, delay);
         }
 
         function updateCountdown() {
-            const nextPollTime = getNextPollTime();
+            const nextPollTime = new Date(nextPollTimestamp);
             const now = new Date();
             let timeRemaining = Math.round((nextPollTime.getTime() - now.getTime()) / 1000);
 
@@ -483,8 +487,6 @@ function getPriceClass($price) {
         setInterval(updateCountdown, 1000);
 
         pollDashboard();
-        scheduleNextPoll();
-        updateCountdown();
     });
 </script>
 @endpush
