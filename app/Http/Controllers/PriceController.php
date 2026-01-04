@@ -258,7 +258,7 @@ class PriceController extends Controller
         if (isset($solarProduction[$currentHour]) && $solarProduction[$currentHour] > 0) {
             $targetKwh = end($solarProduction);
             
-            $futureGenerationKwh = ($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh;
+            $futureGenerationKwh = ($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh - $currentYieldKwh;
             $futureGenerationPercent = round($futureGenerationKwh / self::SOC_TO_KWH_FACTOR);
             $socInKwh = $soc * self::SOC_TO_KWH_FACTOR;
             $essentialKwhTarget = 20;
