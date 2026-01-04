@@ -63,20 +63,21 @@ class BatteryControlService
         $currentSolarPrice = $prices['solarPrice'];
         $targetSolarPrice = $battery->target_price_cents;
         $shouldForceDischarge = $currentSolarPrice > $targetSolarPrice && $battery->status !== 'self_sufficient';
-
         if ($battery->forced_discharge === $shouldForceDischarge) {
             return;
         }
 
         $dischargeStartHour = 0;
         $currentHour = now()->hour;
-
         if ($overnightStrategy) {
             $overnightStartHour = Carbon::parse($overnightStrategy->sell_start_time)->hour;
             $overnightEndHour = Carbon::parse($overnightStrategy->sell_end_time)->hour;
-            if ($currentHour >= $overnightStartHour && $currentHour <= $overnightEndHour) {
-                $dischargeStartHour = $overnightStartHour;
-            }
+            $isOvernightWindow = ($currentHour >= $overnightStartHour && $currentHour <= $overnightEndHour);
+        }
+        
+        // Set the discharge hour based on priority: overnight window first, then evening peak
+        if ($isOvernightWindow) {
+            $dischargeStartHour = $overnightStartHour;
         } elseif ($eveningPeakStrategy) {
             $dischargeStartHour = Carbon::parse($eveningPeakStrategy->sell_start_time)->hour;
         }
