@@ -36,6 +36,7 @@ class PriceController extends Controller
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
         $this->updateBatteryStatus($batterySettings, $finalSellPlan, $now);
+        $this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null);
         $this->cacheResults($soc,$buyStrategy, $sellPlans);
         $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $now->hour);
         $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $now->hour, $this->getActiveBatteryStrategies());
@@ -180,7 +181,7 @@ class PriceController extends Controller
         }
 
         if ($hasActiveSellPlan && $isWithinSellWindow) {
-            $batterySettings->status = 'prioritize_charging';
+            $batterySettings->status = 'prioritize_selling';
             $batterySettings->save();
         } elseif ((!isset($finalSellPlan['sell_plan']) || empty($finalSellPlan['sell_plan']))) {
             $batterySettings->status = 'self_sufficient';
@@ -390,6 +391,26 @@ class PriceController extends Controller
         // Only update the database if the target price has changed
         if ($newTargetPrice !== null && $newTargetPrice != $batterySettings->target_price_cents) {
             $batterySettings->target_price_cents = $newTargetPrice;
+            $batterySettings->save();
+        }
+    }
+
+    private function updateTargetElectricPrice(BatterySetting $batterySettings, ?array $essentialBuyPlan): void
+    {
+        if (empty($essentialBuyPlan) || empty($essentialBuyPlan['buy_plan'])) {
+            return;
+        }
+
+        $lowestBuyPrice = PHP_INT_MAX;
+        foreach ($essentialBuyPlan['buy_plan'] as $slot) {
+            if ($slot['price'] < $lowestBuyPrice) {
+                $lowestBuyPrice = $slot['price'];
+            }
+        }
+
+        if ($lowestBuyPrice < $batterySettings->longterm_target_electric_price_cents) {
+            $batterySettings->target_electric_price_cents = $lowestBuyPrice;
+            $batterySettings->status = 'prioritize_charging';
             $batterySettings->save();
         }
     }
