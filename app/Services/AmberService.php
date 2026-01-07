@@ -120,7 +120,7 @@ class AmberService
         }
     }
 
-    public function calculateOptimalDischarging(float $kwh, float $solarTargetSellPrice, Carbon $startTime, Carbon $endTime)
+    public function calculateOptimalDischarging(float $kwh, float $solarTargetSellPrice, Carbon $startTime, Carbon $endTime, array $existingSlots = [])
     {
         $apiKey = env('AMBER_ELECTRIC_API_KEY');
         $siteId = env('AMBER_ELECTRIC_SITE_ID');
@@ -152,12 +152,17 @@ class AmberService
                     return $intervalTime->between($startTime, $endTime);
                 });
 
+            $kwhPerSlot = [];
+            foreach ($existingSlots as $slot) {
+                $kwhPerSlot[$slot['time']] = ($kwhPerSlot[$slot['time']] ?? 0) + $slot['kwh'];
+            }
+
             $kwhToSell = $kwh;
             $sellPlan = [];
             $kwhSold = 0;
             $totalRevenue = 0;
 
-            while ($kwhSold < $kwhToSell && $solarTargetSellPrice >= 0) {
+            while ($kwhSold < $kwhToSell && $solarTargetSellPrice >= 0.01) {
                 $sellIntervals = $data
                     ->filter(function ($interval) use ($solarTargetSellPrice) {
                         return $interval['spotPerKwh'] >= $solarTargetSellPrice;
@@ -167,39 +172,54 @@ class AmberService
                 if ($sellIntervals->isNotEmpty()) {
                     foreach ($sellIntervals as $interval) {
                         if ($kwhSold >= $kwhToSell) {
-                            break;
+                            break 2;
                         }
 
-                        $kwhPerInterval = self::BATTERY_POWER * (30 / 60);
-                        $kwhToSellInInterval = min($kwhPerInterval, $kwhToSell - $kwhSold);
+                        $formattedTime = Carbon::parse($interval['nemTime'])->format('H:i');
+                        $kwhSoldInSlot = $kwhPerSlot[$formattedTime] ?? 0;
+                        $kwhCapacityInInterval = self::BATTERY_POWER * (30 / 60);
+                        $availableKwhInSlot = $kwhCapacityInInterval - $kwhSoldInSlot;
 
-                        if (!collect($sellPlan)->contains('nemTime', $interval['nemTime'])) {
-                            $sellPlanEntry = [
-                                'time' => Carbon::parse($interval['nemTime'])->format('H:i'),
-                                'revenue' => round($kwhToSellInInterval * $interval['spotPerKwh'], 2),
-                                'kwh' => round($kwhToSellInInterval, 2),
-                                'price' => round($interval['spotPerKwh'], 2),
-                            ];
-                            $sellPlan[] = $sellPlanEntry;
-                            SellPlan::create($sellPlanEntry);
-                            
+                        if ($availableKwhInSlot > 0) {
+                            $kwhToSellInInterval = min($availableKwhInSlot, $kwhToSell - $kwhSold);
+
+                            $existingEntryIndex = collect($sellPlan)->search(function ($item) use ($formattedTime) {
+                                return $item['time'] === $formattedTime;
+                            });
+
+                            if ($existingEntryIndex !== false) {
+                                $sellPlan[$existingEntryIndex]['kwh'] += $kwhToSellInInterval;
+                                $sellPlan[$existingEntryIndex]['revenue'] += $kwhToSellInInterval * $interval['spotPerKwh'];
+                            } else {
+                                $sellPlan[] = [
+                                    'time' => $formattedTime,
+                                    'revenue' => $kwhToSellInInterval * $interval['spotPerKwh'],
+                                    'kwh' => $kwhToSellInInterval,
+                                    'price' => $interval['spotPerKwh'],
+                                ];
+                            }
+
+                            $kwhPerSlot[$formattedTime] = ($kwhPerSlot[$formattedTime] ?? 0) + $kwhToSellInInterval;
                             $kwhSold += $kwhToSellInInterval;
                             $totalRevenue += $kwhToSellInInterval * $interval['spotPerKwh'];
                         }
                     }
                 }
-                $solarTargetSellPrice *= 0.9; // Reduce by 10%
             }
-
 
             if (empty($sellPlan)) {
                 return ['message' => 'No profitable selling opportunities found within the time window.'];
             }
             
-            $sellPlanCollection = collect($sellPlan);
+            $sellPlanCollection = collect($sellPlan)->map(function ($item) {
+                $item['revenue'] = round($item['revenue'], 2);
+                $item['kwh'] = round($item['kwh'], 2);
+                $item['price'] = round($item['price'], 2);
+                return $item;
+            });
 
             return [
-                'sell_plan' => $sellPlan,
+                'sell_plan' => $sellPlanCollection->values()->all(),
                 'total_kwh_sold' => round($kwhSold, 2),
                 'total_revenue' => round($totalRevenue, 2),
                 'highest_sell_price' => $sellPlanCollection->max('price'),

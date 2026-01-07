@@ -96,6 +96,7 @@ class PriceController extends Controller
     private function calculateSellPlans(float $soc, Carbon $now, AmberService $amberService, BatterySetting $batterySettings, $batteryStrategies): array
     {
         $allPotentialPlans = [];
+        $allocatedSlots = [];
 
         // First, calculate a potential plan for every active strategy
         foreach ($batteryStrategies as $strategy) {
@@ -116,8 +117,15 @@ class PriceController extends Controller
                         $kwhToSell,
                         $batterySettings->longterm_target_price_cents,
                         $effectiveStart,
-                        $endTime
+                        $endTime,
+                        $allocatedSlots
                     );
+
+                    if (isset($plan['sell_plan'])) {
+                        foreach ($plan['sell_plan'] as $slot) {
+                            $allocatedSlots[] = $slot;
+                        }
+                    }
                 }
             }
             $allPotentialPlans[$strategy->name] = $plan;
@@ -306,7 +314,7 @@ class PriceController extends Controller
      */
     private function getActiveBatteryStrategies()
     {
-        return BatteryStrategy::where('is_active', true)->get();
+        return BatteryStrategy::where('is_active', true)->orderBy('id', 'asc')->get();
     }
 
     /**
@@ -348,7 +356,6 @@ class PriceController extends Controller
                 }
             }
         }
-        $lowestPrice=$lowestPrice-1; //1 cent buffer
         return $lowestPrice;
     }
 
@@ -399,6 +406,7 @@ class PriceController extends Controller
 
         // Only update the database if the target price has changed
         if ($newTargetPrice !== null && $newTargetPrice != $batterySettings->target_price_cents) {
+            $newTargetPrice *= 0.9;
             $batterySettings->target_price_cents = $newTargetPrice;
             $batterySettings->save();
         }
