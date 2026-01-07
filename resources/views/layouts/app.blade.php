@@ -65,6 +65,9 @@
                                     <a class="dropdown-item" href="{{ route('battery-settings.index') }}">
                                         {{ __('Settings') }}
                                     </a>
+                                    <a class="dropdown-item" href="{{ route('sell-plans.index') }}">
+                                        {{ __('Sell Plans') }}
+                                    </a>
                                     <a class="dropdown-item" href="{{ route('solar-forecasts.index') }}">
                                         {{ __('Solar Forecasts') }}
                                     </a>
@@ -86,6 +89,9 @@
                                     </a>
 
                                     <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
+                                        @csrf
+                                    </form>
+                                d-none">
                                         @csrf
                                     </form>
                                 </div>

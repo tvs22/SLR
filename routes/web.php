@@ -40,4 +40,5 @@ Route::group(['middleware' => ['auth']], function () {
     Route::get('/dashboard/data', 'App\Http\Controllers\DashboardController@data')->name('dashboard.data');
     Route::resource('battery-strategies', 'App\Http\Controllers\BatteryStrategyController');
     Route::get('/price/simulation', 'App\Http\Controllers\PriceController@simulation')->name('price.simulation');
+    Route::get('/sell-plans', 'App\Http\Controllers\SellPlanController@index')->name('sell-plans.index');
 });

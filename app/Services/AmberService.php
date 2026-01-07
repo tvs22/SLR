@@ -4,6 +4,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use App\Models\SellPlan;
 
 class AmberService
 {
@@ -173,18 +174,21 @@ class AmberService
                         $kwhToSellInInterval = min($kwhPerInterval, $kwhToSell - $kwhSold);
 
                         if (!collect($sellPlan)->contains('nemTime', $interval['nemTime'])) {
-                             $sellPlan[] = [
+                            $sellPlanEntry = [
                                 'time' => Carbon::parse($interval['nemTime'])->format('H:i'),
                                 'revenue' => round($kwhToSellInInterval * $interval['spotPerKwh'], 2),
                                 'kwh' => round($kwhToSellInInterval, 2),
                                 'price' => round($interval['spotPerKwh'], 2),
                             ];
+                            $sellPlan[] = $sellPlanEntry;
+                            SellPlan::create($sellPlanEntry);
+                            
                             $kwhSold += $kwhToSellInInterval;
                             $totalRevenue += $kwhToSellInInterval * $interval['spotPerKwh'];
                         }
                     }
                 }
-                $solarTargetSellPrice -= 1; // Reduce by 1 cent
+                $solarTargetSellPrice *= 0.9; // Reduce by 10%
             }
 
 
