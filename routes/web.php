@@ -41,4 +41,6 @@ Route::group(['middleware' => ['auth']], function () {
     Route::resource('battery-strategies', 'App\Http\Controllers\BatteryStrategyController');
     Route::get('/price/simulation', 'App\Http\Controllers\PriceController@simulation')->name('price.simulation');
     Route::get('/sell-plans', 'App\Http\Controllers\SellPlanController@index')->name('sell-plans.index');
+    Route::delete('/sell-plans', 'App\Http\Controllers\SellPlanController@destroy')->name('sell-plans.destroy');
+    Route::get('/sell-plans/export', 'App\Http\Controllers\SellPlanController@export')->name('sell-plans.export');
 });
