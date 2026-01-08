@@ -7,6 +7,7 @@ use App\Services\AmberService;
 use App\Services\FoxEssService;
 use App\SolarForecast;
 use App\BatterySetting;
+use App\Models\SellPlan;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,7 @@ class PriceController extends Controller
         }
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
+        $this->saveSellPlanHistory($finalSellPlan);
         $this->updateBatteryStatus($batterySettings, $finalSellPlan, $now);
         $this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null);
         $this->cacheResults($soc,$buyStrategy, $sellPlans);
@@ -495,5 +497,21 @@ class PriceController extends Controller
         });
 
         return $mergedPlan;
+    }
+
+    private function saveSellPlanHistory(?array $sellPlan): void
+    {
+        if (empty($sellPlan) || empty($sellPlan['sell_plan'])) {
+            return;
+        }
+
+        foreach ($sellPlan['sell_plan'] as $slot) {
+            SellPlan::create([
+                'time' => Carbon::parse($slot['time']),
+                'revenue' => $slot['revenue'],
+                'kwh' => $slot['kwh'],
+                'price' => $slot['price'],
+            ]);
+        }
     }
 }
