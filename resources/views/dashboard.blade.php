@@ -123,6 +123,57 @@ function getPriceClass($price) {
                     </div>
                 </div>
             </div>
+            
+            {{-- Sell Strategy Insights --}}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Sell Strategy Insights</h5>
+                            <small class="text-muted">Live data driving the battery's selling decisions</small>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm table-bordered">
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Solar Prices (last 30 mins)</strong></td>
+                                        <td id="solar-prices-data">
+                                            @if(!empty($solar_prices))
+                                                {{ implode(', ', array_map(function($price) { return number_format($price, 2) . 'c'; }, $solar_prices)) }}
+                                            @else
+                                                n/a
+                                            @endif
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Forecast Errors</strong></td>
+                                        <td id="forecast-errors-data">
+                                            @if(!empty($forecast_errors))
+                                                {{ implode(', ', array_map(function($error) { return number_format($error, 2); }, $forecast_errors)) }}
+                                            @else
+                                                n/a
+                                            @endif
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Offer Price</strong></td>
+                                        <td id="offer-price-data">{{ isset($offer_price) ? number_format($offer_price, 2) . 'c' : 'n/a' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Sell Score</strong></td>
+                                        <td id="sell-score-data">{{ isset($sell_score) ? number_format($sell_score, 2) : 'n/a' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Sell Threshold</strong></td>
+                                        <td id="threshold-data">{{ isset($threshold) ? number_format($threshold, 2) : 'n/a' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {{-- Battery Transactions --}}
             <div class="row mt-4">
                 <div class="col-12">
@@ -366,6 +417,25 @@ function getPriceClass($price) {
             renderSellStrategy('evening-sell-strategy-container', data.evening_sell_strategy);
             renderSellStrategy('late-evening-sell-strategy-container', data.late_evening_sell_strategy);
             renderSellStrategy('late-night-sell-strategy-container', data.late_night_sell_strategy);
+
+            // Sell Strategy Insights
+            const solarPricesData = document.getElementById('solar-prices-data');
+            if (data.solar_prices && data.solar_prices.length > 0) {
+                solarPricesData.textContent = data.solar_prices.map(price => parseFloat(price).toFixed(2) + 'c').join(', ');
+            } else {
+                solarPricesData.textContent = 'n/a';
+            }
+
+            const forecastErrorsData = document.getElementById('forecast-errors-data');
+            if (data.forecast_errors && data.forecast_errors.length > 0) {
+                forecastErrorsData.textContent = data.forecast_errors.map(error => parseFloat(error).toFixed(2)).join(', ');
+            } else {
+                forecastErrorsData.textContent = 'n/a';
+            }
+
+            document.getElementById('offer-price-data').textContent = data.offer_price !== null ? parseFloat(data.offer_price).toFixed(2) + 'c' : 'n/a';
+            document.getElementById('sell-score-data').textContent = data.sell_score !== null ? parseFloat(data.sell_score).toFixed(2) : 'n/a';
+            document.getElementById('threshold-data').textContent = data.threshold !== null ? parseFloat(data.threshold).toFixed(2) : 'n/a';
 
             // Battery Transactions
             const transactionsContainer = document.getElementById('battery-transactions-container');

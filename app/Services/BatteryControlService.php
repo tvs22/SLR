@@ -61,14 +61,63 @@ class BatteryControlService
     private function handleForcedDischarge($battery, $prices, $eveningPeakStrategy, $overnightStrategy)
     {
         $currentSolarPrice = $prices['solarPrice'];
-        $targetSolarPrice = $battery->target_price_cents;
-        $shouldForceDischarge = $currentSolarPrice > $targetSolarPrice && $battery->status !== 'self_sufficient';
+        $forecastPrice = $battery->target_price_cents;
+
+        // Manage historical prices
+        $solarPrices = Cache::get('solar_prices', []);
+        array_unshift($solarPrices, $currentSolarPrice);
+        $solarPrices = array_slice($solarPrices, 0, 6);
+        Cache::put('solar_prices', $solarPrices, now()->addMinutes(60));
+
+        // Manage forecast errors
+        $forecastErrors = Cache::get('forecast_errors', []);
+        if ($currentSolarPrice < $forecastPrice) {
+            $error = $forecastPrice - $currentSolarPrice;
+            array_unshift($forecastErrors, $error);
+            $forecastErrors = array_slice($forecastErrors, 0, 6);
+            Cache::put('forecast_errors', $forecastErrors, now()->addMinutes(60));
+        }
+
+        // Calculate metrics
+        $avg_error = count($forecastErrors) > 0 ? array_sum($forecastErrors) / count($forecastErrors) : 0;
+        $P_forecast_high = $this->clamp($avg_error / 5, 0, 1);
+
+        $P_momentum = 0.0;
+        if (count($solarPrices) >= 3) {
+            if ($solarPrices[1] > $solarPrices[2] && $solarPrices[1] > $solarPrices[0]) {
+                $P_momentum = 1.0;
+            } elseif ($solarPrices[0] < $solarPrices[1]) {
+                $P_momentum = 0.6;
+            }
+        }
+
+        $volatility = $this->stddev($solarPrices);
+        $P_spike = $this->clamp($volatility / 3, 0, 1);
+
+        $sell_score =
+            0.4 * $P_forecast_high +
+            0.4 * $P_momentum +
+            0.2 * $P_spike;
+
+        $threshold = 0.65;
+        $haircut = 0.90;
+        $floor = 14.5;
+
+        $offer_price = max($forecastPrice * $haircut, $floor);
+        Cache::put('offer_price', $offer_price, now()->addMinutes(5));
+        Cache::put('sell_score', $sell_score, now()->addMinutes(5));
+        Cache::put('threshold', $threshold, now()->addMinutes(5));
+
+        $shouldForceDischarge = ($sell_score >= $threshold || $currentSolarPrice >= $offer_price) && $battery->status !== 'self_sufficient';
+
+
         if ($battery->forced_discharge === $shouldForceDischarge) {
             return;
         }
 
         $dischargeStartHour = 0;
         $currentHour = now()->hour;
+        $isOvernightWindow = false;
         if ($overnightStrategy) {
             $overnightStartHour = Carbon::parse($overnightStrategy->sell_start_time)->hour;
             $overnightEndHour = Carbon::parse($overnightStrategy->sell_end_time)->hour;
@@ -118,5 +167,24 @@ class BatteryControlService
             'action' => $shouldForceCharge ? 'FORCE_CHARGE_ON' : 'FORCE_CHARGE_OFF',
             'battery_id' => $battery->id,
         ]);
+    }
+
+    private function clamp($value, $min, $max)
+    {
+        return max($min, min($max, $value));
+    }
+
+    private function stddev($array)
+    {
+        $n = count($array);
+        if ($n === 0) {
+            return 0;
+        }
+        $mean = array_sum($array) / $n;
+        $variance = 0.0;
+        foreach ($array as $x) {
+            $variance += pow($x - $mean, 2);
+        }
+        return (float) sqrt($variance / $n);
     }
 }

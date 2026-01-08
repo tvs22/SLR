@@ -37,6 +37,11 @@ class DashboardController extends Controller
             'kwh_to_buy_target' => Cache::get('kwh_to_buy_target'),
             'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
             'batteryStrategies' => BatteryStrategy::where('is_active', true)->whereNotNull('sell_start_time')->get(),
+            'solar_prices' => Cache::get('solar_prices'),
+            'forecast_errors' => Cache::get('forecast_errors'),
+            'offer_price' => Cache::get('offer_price'),
+            'sell_score' => Cache::get('sell_score'),
+            'threshold' => Cache::get('threshold'),
         ]);
     }
 
@@ -59,6 +64,11 @@ class DashboardController extends Controller
             'batteryTransactions' => BatteryTransaction::latest()->take(10)->get(),
             'kwh_to_buy_essential' => Cache::get('kwh_to_buy_essential'),
             'kwh_to_buy_target' => Cache::get('kwh_to_buy_target'),
+            'solar_prices' => Cache::get('solar_prices'),
+            'forecast_errors' => Cache::get('forecast_errors'),
+            'offer_price' => Cache::get('offer_price'),
+            'sell_score' => Cache::get('sell_score'),
+            'threshold' => Cache::get('threshold'),
         ]);
     }
 }
