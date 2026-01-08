@@ -80,7 +80,7 @@ function getPriceClass($price) {
         <div class="tab-pane fade show active" id="status-content" role="tabpanel" aria-labelledby="status-tab">
             <div class="row mt-4">
                 {{-- Prices & Status --}}
-                <div class="col-lg-6 col-md-12 mb-4">
+                <div class="col-lg-4 col-md-12 mb-4">
                     <div class="card h-100">
                         <div class="card-header">
                             <h5>Live Status</h5>
@@ -105,7 +105,7 @@ function getPriceClass($price) {
                 </div>
 
                 {{-- SOC & Solar --}}
-                <div class="col-lg-6 col-md-12 mb-4">
+                <div class="col-lg-4 col-md-12 mb-4">
                     <div class="card h-100">
                         <div class="card-header">
                             <h5>Battery & Solar</h5>
@@ -122,11 +122,9 @@ function getPriceClass($price) {
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            {{-- Sell Strategy Insights --}}
-            <div class="row mt-4">
-                <div class="col-12">
+                
+                {{-- Sell Strategy Insights --}}
+                <div class="col-lg-4 col-md-12 mb-4">
                     <div class="card">
                         <div class="card-header">
                             <h5>Sell Strategy Insights</h5>
