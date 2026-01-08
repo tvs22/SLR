@@ -43,4 +43,5 @@ Route::group(['middleware' => ['auth']], function () {
     Route::get('/sell-plans', 'App\Http\Controllers\SellPlanController@index')->name('sell-plans.index');
     Route::delete('/sell-plans', 'App\Http\Controllers\SellPlanController@destroy')->name('sell-plans.destroy');
     Route::get('/sell-plans/export', 'App\Http\Controllers\SellPlanController@export')->name('sell-plans.export');
+    Route::get('/sell-plans/destroy-all', 'App\Http\Controllers\SellPlanController@destroyAll')->name('sell-plans.destroy-all');
 });

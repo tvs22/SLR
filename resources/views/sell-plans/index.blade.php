@@ -8,7 +8,8 @@
         @method('DELETE')
         <div class="d-flex justify-content-end mb-3">
             <a href="{{ route('sell-plans.export') }}" class="btn btn-success" style="margin-right: 5px;">Export to Excel</a>
-            <button type="submit" class="btn btn-danger">Delete Selected</button>
+            <button type="submit" class="btn btn-danger" style="margin-right: 5px;">Delete Selected</button>
+            <a href="{{ route('sell-plans.destroy-all') }}" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete all sell plans?')">Delete All</a>
         </div>
         @foreach($sellPlans as $created_at => $plans)
             <div class="card mb-3">

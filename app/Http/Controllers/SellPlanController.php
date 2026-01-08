@@ -31,4 +31,10 @@ class SellPlanController extends Controller
     {
         return Excel::download(new SellPlansExport, 'sell-plans.xlsx');
     }
+
+    public function destroyAll()
+    {
+        SellPlan::truncate();
+        return redirect()->route('sell-plans.index');
+    }
 }

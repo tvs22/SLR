@@ -25,7 +25,8 @@ class PriceController extends Controller
     {
         $now = Carbon::now();
         $batterySettings = BatterySetting::latest()->first();
-        $soc = $foxEssService->getSoc();
+        //$soc = $foxEssService->getSoc();
+        $soc =100;
         $sellPlans = [];
         $buyStrategy = ['essential_buy_plan' => [], 'target_buy_plan' => []];
 
