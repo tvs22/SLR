@@ -112,7 +112,7 @@ class SolarForecastController extends Controller
      *
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function getSolarForecasts()
+    public function getSolarForecasts(Request $request)
     {
         // Delete all forecasts not created today
         SolarForecast::whereDate('created_at', '<', Carbon::today())->delete();
@@ -123,7 +123,9 @@ class SolarForecastController extends Controller
             return redirect()->route('solar-forecasts.index')->with('error', 'Solar forecast for today has already been updated.');
         }
 
-        $response = Http::get('https://api.forecast.solar/estimate/watthours/-33.8068538/150.6820298/37/30/10');
+        $kwp = $request->input('kwp', 10);
+
+        $response = Http::get("https://api.forecast.solar/estimate/watthours/-33.8068538/150.6820298/37/30/{$kwp}");
 
         if ($response->successful()) {
             $data = $response->json();

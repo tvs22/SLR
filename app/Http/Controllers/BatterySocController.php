@@ -247,6 +247,7 @@ class BatterySocController extends Controller
                     }
                 }
             }
+            $totalGeneration *= 1.09;
             PvYield::create([
                 'date' => $now->toDateString(),
                 'hour' => $currentHour,

@@ -36,7 +36,7 @@ class PriceController extends Controller
         }
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
-        $this->saveSellPlanHistory($finalSellPlan);
+        //$this->saveSellPlanHistory($finalSellPlan);
         $this->updateBatteryStatus($batterySettings, $finalSellPlan, $now);
         $this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null);
         $this->cacheResults($soc,$buyStrategy, $sellPlans);
