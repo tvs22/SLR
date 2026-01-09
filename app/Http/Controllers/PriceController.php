@@ -294,9 +294,9 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
 
         $gridConsumption = round($gridConsumption, 2);
 
-        if ($gridConsumption < 10) {
+        if ($gridConsumption < 11) {
             $everydayBuyPlan = $amberService->calculateOptimalCharging(
-                10 - $gridConsumption,
+                11 - $gridConsumption,
                 $batterySettings->longterm_target_electric_price_cents,
                 $now, 
                 $now->copy()->addHours(24), 
