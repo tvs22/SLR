@@ -5,6 +5,7 @@ namespace App\Services;
 use App\BatterySetting;
 use App\BatteryTransaction;
 use App\Models\BatteryStrategy;
+use App\Models\SellPlan;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
@@ -63,52 +64,64 @@ class BatteryControlService
         $currentSolarPrice = $prices['solarPrice'];
         $forecastPrice = $battery->target_price_cents;
 
-        // Manage historical prices
-        $solarPrices = Cache::get('solar_prices', []);
-        array_unshift($solarPrices, $currentSolarPrice);
-        $solarPrices = array_slice($solarPrices, 0, 6);
-        Cache::put('solar_prices', $solarPrices, now()->addMinutes(60));
-
-        // Manage forecast errors
-        $forecastErrors = Cache::get('forecast_errors', []);
-        if ($currentSolarPrice < $forecastPrice) {
-            $error = $forecastPrice - $currentSolarPrice;
-            array_unshift($forecastErrors, $error);
-            $forecastErrors = array_slice($forecastErrors, 0, 6);
-            Cache::put('forecast_errors', $forecastErrors, now()->addMinutes(60));
-        }
-
-        // Calculate metrics
-        $avg_error = count($forecastErrors) > 0 ? array_sum($forecastErrors) / count($forecastErrors) : 0;
-        $P_forecast_high = $this->clamp($avg_error / 5, 0, 1);
-
-        $P_momentum = 0.0;
-        if (count($solarPrices) >= 3) {
-            if ($solarPrices[1] > $solarPrices[2] && $solarPrices[1] > $solarPrices[0]) {
-                $P_momentum = 1.0;
-            } elseif ($solarPrices[0] < $solarPrices[1]) {
-                $P_momentum = 0.6;
+        $recentSellPlans = SellPlan::where('created_at', '>=', Carbon::now()->subMinutes(15))->get();
+        $isSellWindow = false;
+        foreach ($recentSellPlans as $plan) {
+            if (Carbon::now()->format('H:i') >= Carbon::parse($plan->time)->format('H:i')) {
+                $isSellWindow = true;
+                break;
             }
         }
+        if ($isSellWindow) {
+            // Manage historical prices
+            $solarPrices = Cache::get('solar_prices', []);
+            array_unshift($solarPrices, $currentSolarPrice);
+            $solarPrices = array_slice($solarPrices, 0, 6);
+            Cache::put('solar_prices', $solarPrices, now()->addMinutes(60));
 
-        $volatility = $this->stddev($solarPrices);
-        $P_spike = $this->clamp($volatility / 3, 0, 1);
+            // Manage forecast errors
+            $forecastErrors = Cache::get('forecast_errors', []);
+            if ($currentSolarPrice < $forecastPrice) {
+                $error = $forecastPrice - $currentSolarPrice;
+                array_unshift($forecastErrors, $error);
+                $forecastErrors = array_slice($forecastErrors, 0, 6);
+                Cache::put('forecast_errors', $forecastErrors, now()->addMinutes(60));
+            }
 
-        $sell_score =
-            0.4 * $P_forecast_high +
-            0.4 * $P_momentum +
-            0.2 * $P_spike;
+            // Calculate metrics
+            $avg_error = count($forecastErrors) > 0 ? array_sum($forecastErrors) / count($forecastErrors) : 0;
+            $P_forecast_high = $this->clamp($avg_error / 5, 0, 1);
 
-        $threshold = 0.65;
-        $haircut = 0.90;
-        $floor = 14.5;
+            $P_momentum = 0.0;
+            if (count($solarPrices) >= 3) {
+                if ($solarPrices[1] > $solarPrices[2] && $solarPrices[1] > $solarPrices[0]) {
+                    $P_momentum = 1.0;
+                } elseif ($solarPrices[0] < $solarPrices[1]) {
+                    $P_momentum = 0.6;
+                }
+            }
 
-        $offer_price = max($forecastPrice * $haircut, $floor);
-        Cache::put('offer_price', $offer_price, now()->addMinutes(5));
-        Cache::put('sell_score', $sell_score, now()->addMinutes(5));
-        Cache::put('threshold', $threshold, now()->addMinutes(5));
+            $volatility = $this->stddev($solarPrices);
+            $P_spike = $this->clamp($volatility / 3, 0, 1);
 
-        $shouldForceDischarge = ($sell_score >= $threshold || $currentSolarPrice >= $offer_price) && $battery->status !== 'self_sufficient';
+            $sell_score =
+                0.4 * $P_forecast_high +
+                0.4 * $P_momentum +
+                0.2 * $P_spike;
+
+            $threshold = 0.65;
+            $haircut = 0.90;
+            $floor = 14.5;
+
+            $offer_price = max($forecastPrice * $haircut, $floor);
+            Cache::put('offer_price', $offer_price, now()->addMinutes(5));
+            Cache::put('sell_score', $sell_score, now()->addMinutes(5));
+            Cache::put('threshold', $threshold, now()->addMinutes(5));
+
+            $shouldForceDischarge = ($sell_score >= $threshold || $currentSolarPrice >= $offer_price) && $battery->status !== 'self_sufficient';
+        } else {
+            $shouldForceDischarge = $currentSolarPrice > $forecastPrice && $battery->status !== 'self_sufficient';
+        }
 
 
         if ($battery->forced_discharge === $shouldForceDischarge) {

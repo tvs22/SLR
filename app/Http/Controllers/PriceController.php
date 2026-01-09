@@ -25,7 +25,8 @@ class PriceController extends Controller
     {
         $now = Carbon::now();
         $batterySettings = BatterySetting::latest()->first();
-        $soc = $foxEssService->getSoc();
+        //$soc = $foxEssService->getSoc();
+        $soc=100;
         $sellPlans = [];
         $buyStrategy = ['essential_buy_plan' => [], 'target_buy_plan' => []];
 
@@ -36,7 +37,7 @@ class PriceController extends Controller
         }
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
-        //$this->saveSellPlanHistory($finalSellPlan);
+        $this->saveSellPlanHistory($finalSellPlan);
         $this->updateBatteryStatus($batterySettings, $finalSellPlan, $now);
         $this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null);
         $this->cacheResults($soc,$buyStrategy, $sellPlans);

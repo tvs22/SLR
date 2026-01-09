@@ -67,11 +67,15 @@ class AmberService
                 return ['error' => 'Failed to fetch data from Amber Electric API.'];
             }
 
+            $now = Carbon::now();
             $data = collect($response->json())
                 ->where('channelType', 'general')
                 ->map(function ($interval) {
                     $interval['startTimeCarbon'] = Carbon::parse($interval['startTime']);
                     return $interval;
+                })
+                ->filter(function ($interval) use ($now) {
+                    return $interval['startTimeCarbon']->gte($now);
                 });
             
             $buyIntervals = $data
@@ -140,15 +144,18 @@ class AmberService
                 return ['error' => 'Failed to fetch data from Amber Electric API.'];
             }
 
+            $now = Carbon::now();
             $data = collect($response->json())
                 ->where('channelType', 'general')
                 ->map(function ($interval) {
                     $interval['startTimeCarbon'] = Carbon::parse($interval['startTime']);
                     return $interval;
                 })
-                ->filter(function ($interval) use ($startTime, $endTime) {
-                    $intervalTime = Carbon::parse($interval['nemTime']);
-                    return $intervalTime->between($startTime, $endTime);
+                ->filter(function ($interval) use ($startTime, $endTime, $now) {
+                    $intervalTime = Carbon::parse($interval['nemTime'])->second(0);
+                    $start = $startTime->copy()->second(0);
+                    $end = $endTime->copy()->second(0);
+                    return $intervalTime->between($start, $end) && $interval['startTimeCarbon']->gte($now);
                 });
 
             $kwhPerSlot = [];
