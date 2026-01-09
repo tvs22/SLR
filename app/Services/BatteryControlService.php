@@ -121,6 +121,11 @@ class BatteryControlService
             $offer_price=$forecastPrice;
             $shouldForceDischarge = ($sell_score >= $threshold || $currentSolarPrice >= $offer_price) && $battery->status !== 'self_sufficient';
         } else {
+            Cache::forget('offer_price');
+            Cache::forget('sell_score');
+            Cache::forget('threshold');
+            Cache::forget('solar_prices');
+            Cache::forget('forecast_errors');
             $shouldForceDischarge = $currentSolarPrice > $forecastPrice && $battery->status !== 'self_sufficient';
         }
 

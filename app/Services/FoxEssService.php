@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\BatterySetting;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -38,7 +39,9 @@ class FoxEssService
 
         if ($policyIndex === null) {
             if ($enable) {
-                 throw new RuntimeException('No matching ' . $workMode . ' policy found for hour ' . $startHour);
+                $errorMessage = 'No matching ' . $workMode . ' policy found for hour ' . $startHour;
+                Cache::put('fox_ess_error', $errorMessage, now()->addMinutes(60));
+                throw new RuntimeException($errorMessage);
             } else {
                 return;
             }

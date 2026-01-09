@@ -11,6 +11,14 @@ function getPriceClass($price) {
 
 @section('content')
 <div class="container">
+
+    @if (Cache::has('fox_ess_error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            {{ Cache::get('fox_ess_error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Battery Dashboard</h1>
         <button id="predict-prices-btn" class="btn btn-primary">Predict Prices</button>
