@@ -32,18 +32,19 @@ class PriceController extends Controller
         if ($soc !== null) {
             $batteryStrategies = $this->getActiveBatteryStrategies();
             $sellPlans = $this->calculateSellPlans($soc, $now, $amberService, $batterySettings, $batteryStrategies);
-            $buyStrategy = $this->pvYieldBackfill($soc,$amberService, $batterySettings);
+            $buyStrategy = $this->pvYieldBackfill($soc,$amberService, $batterySettings,$foxEssService);
         }
 
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
         $this->saveSellPlanHistory($finalSellPlan);
-        $this->updateBatteryStatus($batterySettings, $finalSellPlan, $now);
-        $this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null);
+        $this->updateBatteryStatus($batterySettings, $finalSellPlan, $buyStrategy, $now);
+        $this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null, $buyStrategy['everyday_buy_plan'] ?? null);
         $this->cacheResults($soc,$buyStrategy, $sellPlans);
         $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $now->hour);
         $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $now->hour, $this->getActiveBatteryStrategies());
 
         return response()->json([
+            'everyday_buy_plan' => $buyStrategy['everyday_buy_plan'],
             'essential_buy_plan' => $buyStrategy['essential_buy_plan'],
             'target_buy_plan' => $buyStrategy['target_buy_plan'],
             'kwh_to_buy_essential' => $buyStrategy['kwh_to_buy_essential'] ?? 0,
@@ -174,13 +175,15 @@ class PriceController extends Controller
         return $finalSellPlans;
     }
 
-    private function updateBatteryStatus(BatterySetting $batterySettings, ?array $finalSellPlan, Carbon $now): void
-    {
-        $hasActiveSellPlan = !empty($finalSellPlan['sell_plan']);
-        $isWithinSellWindow = false;
-        $batteryStrategies = $this->getActiveBatteryStrategies();
+private function updateBatteryStatus(BatterySetting $batterySettings, ?array $finalSellPlan, array $buyStrategy, Carbon $now): void
+{
+    $batteryStrategies = $this->getActiveBatteryStrategies();
 
-        foreach ($batteryStrategies as $strategy) {
+    // Sell Window Logic
+    $hasActiveSellPlan = !empty($finalSellPlan['sell_plan']);
+    $isWithinSellWindow = false;
+    foreach ($batteryStrategies as $strategy) {
+        if ($strategy->sell_start_time && $strategy->sell_end_time) {
             $startTime = Carbon::parse($strategy->sell_start_time);
             $endTime = Carbon::parse($strategy->sell_end_time);
             if ($endTime->lt($startTime)) {
@@ -191,21 +194,48 @@ class PriceController extends Controller
                 break;
             }
         }
-
-        if ($hasActiveSellPlan && $isWithinSellWindow) {
-            $batterySettings->status = 'prioritize_selling';
-            $batterySettings->save();
-        } elseif ((!isset($finalSellPlan['sell_plan']) || empty($finalSellPlan['sell_plan']))) {
-            $batterySettings->status = 'self_sufficient';
-            $batterySettings->save();
-        }
     }
+
+    // Buy Window Logic
+    $eveningPeakStrategy = $batteryStrategies->firstWhere('name', 'Evening Peak');
+    $isWithinBuyWindow = false;
+    if ($eveningPeakStrategy && $eveningPeakStrategy->buy_start_time && $eveningPeakStrategy->buy_end_time) {
+        $buyStartTime = Carbon::parse($eveningPeakStrategy->buy_start_time);
+        $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
+        if ($buyEndTime->lt($buyStartTime)) {
+            $buyEndTime->addDay();
+        }
+        $isWithinBuyWindow = $now->between($buyStartTime, $buyEndTime);
+    }
+
+    $hasActiveBuyPlan = !empty($buyStrategy['everyday_buy_plan']['buy_plan'])
+                         || !empty($buyStrategy['essential_buy_plan']['buy_plan'])
+                         || !empty($buyStrategy['target_buy_plan']['buy_plan']);
+
+    // Determine Status
+    $newStatus = 'self_sufficient'; // Default status
+
+    if ($hasActiveSellPlan && $isWithinSellWindow) {
+        // First priority: Selling
+        $newStatus = 'prioritize_selling';
+    } elseif ($hasActiveBuyPlan && $isWithinBuyWindow) {
+        // Second priority: Charging
+        $newStatus = 'prioritize_charging';
+    }
+
+    // Update Database if Changed
+    if ($batterySettings->status !== $newStatus) {
+        $batterySettings->status = $newStatus;
+        $batterySettings->save();
+    }
+}
 
     private function cacheResults($soc,array $buyStrategy, array $sellPlans): void
     {
         Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('remaining_solar_generation_today', $buyStrategy ['future_generation_kwh'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('forecast_soc', $soc+$buyStrategy ['future_generation_percent'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('everyday_buy_plan', $buyStrategy['everyday_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('essential_buy_plan', $buyStrategy['essential_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('target_buy_plan', $buyStrategy['target_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('kwh_to_buy_essential', $buyStrategy['kwh_to_buy_essential'], now()->addMinutes(self::CACHE_MINUTES));
@@ -223,7 +253,7 @@ class PriceController extends Controller
         }
     }
 
-    public function pvYieldBackfill($soc,AmberService $amberService, BatterySetting $batterySettings): array
+    public function pvYieldBackfill($soc,AmberService $amberService, BatterySetting $batterySettings,FoxEssService $foxEssService): array
     {
         $now = Carbon::now();
         $today = $now->toDateString();
@@ -237,15 +267,36 @@ class PriceController extends Controller
         $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
 
         $currentYield = DB::table('pv_yields')->where('date', $today)->where('hour', $currentHour)->first();
+        $everydayBuyPlan = ['buy_plan' => []];
         $essentialBuyPlan = ['buy_plan' => []];
         $targetBuyPlan = ['buy_plan' => []];
         $futureGenerationKwh = 0;
         $futureGenerationPercent = 0;
         $kwhToBuyEssential = 0;
         $kwhToBuyTarget = 0;
-
+        $reportVars = [
+            "gridConsumption",
+        ];
+        $data = $foxEssService->getReport("day", $reportVars);
+        $gridConsumption = 0;
+            if (isset($data['result'])) {
+                foreach ($data['result'] as $report) {
+                    if ($report['variable'] === 'gridConsumption' && isset($report['values'])) {
+                        $gridConsumption = array_sum($report['values']);
+                        break;
+                    }
+                }
+            }
+        $gridConsumption = round($gridConsumption, 2);
+        if ($gridConsumption < 10) {
+            $everydayBuyPlan = $amberService->calculateOptimalCharging(
+                10-$gridConsumption,
+                $batterySettings->longterm_target_electric_price_cents
+            );
+        }
         if (!$currentYield) {
             return [
+                'everyday_buy_plan' => $everydayBuyPlan,
                 'essential_buy_plan' => $essentialBuyPlan,
                 'target_buy_plan' => $targetBuyPlan,
                 'future_generation_kwh' => $futureGenerationKwh,
@@ -299,6 +350,7 @@ class PriceController extends Controller
         }
 
         return [
+            'everyday_buy_plan' => $everydayBuyPlan,
             'essential_buy_plan' => $essentialBuyPlan,
             'target_buy_plan' => $targetBuyPlan,
             'future_generation_kwh' => round($futureGenerationKwh, 2),
@@ -419,23 +471,22 @@ class PriceController extends Controller
         }
     }
 
-    private function updateTargetElectricPrice(BatterySetting $batterySettings, ?array $essentialBuyPlan): void
+    private function updateTargetElectricPrice(BatterySetting $batterySettings, ?array ...$buyPlans): void
     {
-        if (empty($essentialBuyPlan) || empty($essentialBuyPlan['buy_plan'])) {
-            return;
-        }
-
         $lowestBuyPrice = PHP_INT_MAX;
-        foreach ($essentialBuyPlan['buy_plan'] as $slot) {
-            if ($slot['price'] < $lowestBuyPrice) {
-                $lowestBuyPrice = $slot['price'];
+
+        foreach ($buyPlans as $plan) {
+            if (!empty($plan) && !empty($plan['buy_plan'])) {
+                foreach ($plan['buy_plan'] as $slot) {
+                    if ($slot['price'] < $lowestBuyPrice) {
+                        $lowestBuyPrice = $slot['price'];
+                    }
+                }
             }
         }
 
         if ($lowestBuyPrice < $batterySettings->longterm_target_electric_price_cents) {
             $batterySettings->target_electric_price_cents = $lowestBuyPrice;
-            $batterySettings->status = 'prioritize_charging';
-            $batterySettings->save();
         }
     }
 

@@ -40,6 +40,27 @@ function getPriceClass($price) {
         <div class="tab-pane fade" id="buy-plan-content" role="tabpanel" aria-labelledby="buy-plan-tab">
             <div class="row mt-4">
                 <div class="col-12">
+                <div class="card mb-4">
+                        <div class="card-header">
+                            <h5>Everyday Buy Plan</h5>
+                             <p class="mb-0">Remaining to buy: <span id="everyday-kwh-to-buy"></span></p>
+                        </div>
+                        <div class="card-body" id="everyday-buy-plan-container">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Price (c/kWh)</th>
+                                        <th>kWh to Buy</th>
+                                        <th>Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="everyday-buy-plan-body">
+                                    {{-- Content will be injected by JS --}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                     <div class="card mb-4">
                         <div class="card-header">
                             <h5>Essential Buy Plan (to 20kWh)</h5>
@@ -379,8 +400,10 @@ function getPriceClass($price) {
             // Buy Plans
             document.getElementById('essential-kwh-to-buy').textContent = data.kwh_to_buy_essential ? parseFloat(data.kwh_to_buy_essential).toFixed(2) + ' kWh' : '0.00 kWh';
             document.getElementById('target-kwh-to-buy').textContent = data.kwh_to_buy_target ? parseFloat(data.kwh_to_buy_target).toFixed(2) + ' kWh' : '0.00 kWh';
+            document.getElementById('everyday-kwh-to-buy').textContent = data.kwh_to_buy_everyday ? parseFloat(data.kwh_to_buy_everyday).toFixed(2) + ' kWh' : '0.00 kWh';
             renderBuyPlan('essential-buy-plan-container', 'essential-buy-plan-body', data.essential_buy_plan);
             renderBuyPlan('target-buy-plan-container', 'target-buy-plan-body', data.target_buy_plan);
+            renderBuyPlan('everyday-buy-plan-container', 'everyday-buy-plan-body', data.everyday_buy_plan);
 
             // Sell Plan
             const sellPlanBody = document.getElementById('sell-plan-body');
