@@ -153,6 +153,9 @@ class BatteryControlService
         app(FoxEssService::class)->setForcedChargeorDischarge($shouldForceDischarge, $dischargeStartHour, 'ForceDischarge');
 
         $battery->update(['forced_discharge' => $shouldForceDischarge]);
+        if (!isset($currentSolarPrice)) {
+            $currentSolarPrice = 0;
+        }
         BatteryTransaction::create([
             'datetime' => now(),
             'price_cents' => $currentSolarPrice,
