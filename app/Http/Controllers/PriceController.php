@@ -411,6 +411,11 @@ class PriceController extends Controller
             $newTargetPrice *= 0.9;
             $batterySettings->target_price_cents = $newTargetPrice;
             $batterySettings->save();
+            Cache::forget('offer_price');
+            Cache::forget('sell_score');
+            Cache::forget('threshold');
+            Cache::forget('solar_prices');
+            Cache::forget('forecast_errors');
         }
     }
 
