@@ -111,7 +111,7 @@ class BatteryControlService
 
             $threshold = 0.65;
             $haircut = 0.90;
-            $floor = 14.5;
+            $floor = $battery->longterm_target_price_cents;
 
             $offer_price = max($forecastPrice * $haircut, $floor);
             Cache::put('offer_price', $offer_price, now()->addMinutes(5));
