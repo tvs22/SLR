@@ -38,7 +38,7 @@ class PriceController extends Controller
         $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
         $this->saveSellPlanHistory($finalSellPlan);
         $this->updateBatteryStatus($batterySettings, $finalSellPlan, $buyStrategy, $now);
-        $this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null, $buyStrategy['everyday_buy_plan'] ?? null);
+        //$this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null, $buyStrategy['everyday_buy_plan'] ?? null);
         $this->cacheResults($soc,$buyStrategy, $sellPlans);
         $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $now->hour);
         $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $now->hour, $this->getActiveBatteryStrategies());
@@ -253,47 +253,62 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         }
     }
 
-    public function pvYieldBackfill($soc,AmberService $amberService, BatterySetting $batterySettings,FoxEssService $foxEssService): array
+    public function pvYieldBackfill($soc, AmberService $amberService, BatterySetting $batterySettings, FoxEssService $foxEssService): array
     {
         $now = Carbon::now();
         $today = $now->toDateString();
         $currentHour = $now->hour;
-        
-        if(!isset($batterySettings->longterm_target_electric_price_cents))
-        $batterySettings = BatterySetting::latest()->first();
+
+        if (!isset($batterySettings->longterm_target_electric_price_cents)) {
+            $batterySettings = BatterySetting::latest()->first();
+        }
 
         $eveningPeakStrategy = BatteryStrategy::where('name', 'Evening Peak')->first();
         $buyStartTime = Carbon::parse($eveningPeakStrategy->buy_start_time);
         $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
 
         $currentYield = DB::table('pv_yields')->where('date', $today)->where('hour', $currentHour)->first();
+
+        $allocatedSlots = [];
         $everydayBuyPlan = ['buy_plan' => []];
         $essentialBuyPlan = ['buy_plan' => []];
         $targetBuyPlan = ['buy_plan' => []];
+
         $futureGenerationKwh = 0;
         $futureGenerationPercent = 0;
         $kwhToBuyEssential = 0;
         $kwhToBuyTarget = 0;
-        $reportVars = [
-            "gridConsumption",
-        ];
+
+        $reportVars = ["gridConsumption"];
         $data = $foxEssService->getReport("day", $reportVars);
         $gridConsumption = 0;
-            if (isset($data['result'])) {
-                foreach ($data['result'] as $report) {
-                    if ($report['variable'] === 'gridConsumption' && isset($report['values'])) {
-                        $gridConsumption = array_sum($report['values']);
-                        break;
-                    }
+
+        if (isset($data['result'])) {
+            foreach ($data['result'] as $report) {
+                if ($report['variable'] === 'gridConsumption' && isset($report['values'])) {
+                    $gridConsumption = array_sum($report['values']);
+                    break;
                 }
             }
+        }
+
         $gridConsumption = round($gridConsumption, 2);
+
         if ($gridConsumption < 10) {
             $everydayBuyPlan = $amberService->calculateOptimalCharging(
-                10-$gridConsumption,
-                $batterySettings->longterm_target_electric_price_cents
+                10 - $gridConsumption,
+                $batterySettings->longterm_target_electric_price_cents,
+                $now, 
+                $now->copy()->addHours(24), 
+                $allocatedSlots
             );
+            if (isset($everydayBuyPlan['buy_plan'])) {
+                foreach ($everydayBuyPlan['buy_plan'] as $slot) {
+                    $allocatedSlots[] = $slot;
+                }
+            }
         }
+
         if (!$currentYield) {
             return [
                 'everyday_buy_plan' => $everydayBuyPlan,
@@ -307,44 +322,44 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         }
 
         $currentYieldKwh = $currentYield->kwh;
-        
 
         $solarProduction = [
-            8  => 2.78,
-            9  => 5.5,
-            10 => 9.34,
-            11 => 14,
-            12 => 19.23,
-            13 => 24.39,
-            14 => 28.9,
-            15 => 33.7,
-            16 => 38.2,
-            17 => 42,
-            18 => 44.5,
-            19 => 46.00,
+            8 => 2.78, 9 => 5.5, 10 => 9.34, 11 => 14, 12 => 19.23,
+            13 => 24.39, 14 => 28.9, 15 => 33.7, 16 => 38.2, 17 => 42,
+            18 => 44.5, 19 => 46.00,
         ];
 
         if (isset($solarProduction[$currentHour]) && $solarProduction[$currentHour] > 0) {
             $targetKwh = end($solarProduction);
-            
             $futureGenerationKwh = (($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh) - $currentYieldKwh;
             $futureGenerationPercent = round($futureGenerationKwh / self::SOC_TO_KWH_FACTOR);
             $socInKwh = $soc * self::SOC_TO_KWH_FACTOR;
             $essentialKwhTarget = 20;
-            // Essential Buy Plan
+
             $kwhToBuyEssential = max(0, $essentialKwhTarget - $futureGenerationKwh - $socInKwh);
             if ($kwhToBuyEssential > 0) {
                 $essentialBuyPlan = $amberService->calculateOptimalCharging(
                     $kwhToBuyEssential,
-                    $batterySettings->longterm_target_electric_price_cents
+                    $batterySettings->longterm_target_electric_price_cents,
+                    $now, 
+                    $now->copy()->addHours(24), 
+                    $allocatedSlots
                 );
+                if (isset($essentialBuyPlan['buy_plan'])) {
+                    foreach ($essentialBuyPlan['buy_plan'] as $slot) {
+                        $allocatedSlots[] = $slot;
+                    }
+                }
             }
-            // Target Buy Plan
+
             $kwhToBuyTarget = max(0, $targetKwh - $futureGenerationKwh - $socInKwh - $kwhToBuyEssential);
             if ($kwhToBuyTarget > 0) {
                 $targetBuyPlan = $amberService->calculateOptimalCharging(
                     $kwhToBuyTarget,
-                    $batterySettings->longterm_target_electric_price_cents
+                    $batterySettings->longterm_target_electric_price_cents,
+                    $now, 
+                    $now->copy()->addHours(24), 
+                    $allocatedSlots
                 );
             }
         }
