@@ -168,7 +168,7 @@ class BatteryControlService
     {
         $currentElectricPrice = $prices['electricityPrice'];
         $targetElectricPrice = $battery->target_electric_price_cents;
-        $shouldForceCharge = $currentElectricPrice < $targetElectricPrice;
+        $shouldForceCharge = $currentElectricPrice < $targetElectricPrice && $battery->status !== 'self_sufficient';
 
         if ($battery->forced_charge === $shouldForceCharge) {
             return;
