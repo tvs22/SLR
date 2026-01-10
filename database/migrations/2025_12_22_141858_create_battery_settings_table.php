@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('battery_settings', function (Blueprint $table) {
             $table->id();
-            $table->decimal('target_price_cents', 5, 2);
+            $table->decimal('target_price_cents', 20, 2);
             $table->decimal('longterm_target_price_cents', 5, 2);
             $table->boolean('forced_discharge');
             $table->decimal('target_electric_price_cents', 5, 2);
