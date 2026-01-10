@@ -27,21 +27,30 @@ class PriceController extends Controller
         $batterySettings = BatterySetting::latest()->first();
         $soc = $foxEssService->getSoc();
         $sellPlans = [];
-        $buyStrategy = ['essential_buy_plan' => [], 'target_buy_plan' => []];
+        $buyStrategy = ['everyday_buy_plan' => [], 'essential_buy_plan' => [], 'target_buy_plan' => []];
 
-        if ($soc !== null) {
+        if ($soc !== null && $batterySettings) {
             $batteryStrategies = $this->getActiveBatteryStrategies();
             $sellPlans = $this->calculateSellPlans($soc, $now, $amberService, $batterySettings, $batteryStrategies);
-            $buyStrategy = $this->pvYieldBackfill($soc,$amberService, $batterySettings,$foxEssService);
-        }
+            $buyStrategy = $this->pvYieldBackfill($soc, $amberService, $batterySettings, $foxEssService);
 
-        $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
-        $this->saveSellPlanHistory($finalSellPlan);
-        $this->updateBatteryStatus($batterySettings, $finalSellPlan, $buyStrategy, $now);
-        //$this->updateTargetElectricPrice($batterySettings, $buyStrategy['essential_buy_plan'] ?? null, $buyStrategy['everyday_buy_plan'] ?? null);
-        $this->cacheResults($soc,$buyStrategy, $sellPlans);
-        $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $now->hour);
-        $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $now->hour, $this->getActiveBatteryStrategies());
+            $finalSellPlan = $this->mergeSellPlans(...array_values($sellPlans));
+            $this->saveSellPlanHistory($finalSellPlan);
+
+            // Update battery settings in memory
+            $this->updateBatteryStatus($batterySettings, $finalSellPlan, $buyStrategy, $now);
+            //$this->updateTargetElectricPrice($batterySettings, ...array_values($buyStrategy));
+            $lowestCurrentSellPrice = $this->getLowestCurrentSellPrice($finalSellPlan, $now->hour);
+            $this->updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $now->hour, $batteryStrategies);
+
+            // Save all changes to the database at once
+            $batterySettings->save();
+
+            $this->cacheResults($soc, $buyStrategy, $sellPlans, $lowestCurrentSellPrice);
+
+        } else {
+             $lowestCurrentSellPrice = 0; // Default value if SOC or settings are unavailable
+        }
 
         return response()->json([
             'everyday_buy_plan' => $buyStrategy['everyday_buy_plan'],
@@ -162,7 +171,7 @@ class PriceController extends Controller
                 if ($bestStrategyName) {
                     $finalSellPlans[$bestStrategyName] = $bestPlan;
                 }
-                
+
                 // For all other strategies in the group, ensure their plan is null
                 foreach ($strategies as $strategy) {
                     if ($strategy->name !== $bestStrategyName) {
@@ -175,71 +184,69 @@ class PriceController extends Controller
         return $finalSellPlans;
     }
 
-private function updateBatteryStatus(BatterySetting $batterySettings, ?array $finalSellPlan, array $buyStrategy, Carbon $now): void
-{
-    $batteryStrategies = $this->getActiveBatteryStrategies();
+    private function updateBatteryStatus(BatterySetting $batterySettings, ?array $finalSellPlan, array $buyStrategy, Carbon $now): void
+    {
+        $batteryStrategies = $this->getActiveBatteryStrategies();
 
-    // Sell Window Logic
-    $hasActiveSellPlan = !empty($finalSellPlan['sell_plan']);
-    $isWithinSellWindow = false;
-    foreach ($batteryStrategies as $strategy) {
-        if ($strategy->sell_start_time && $strategy->sell_end_time) {
-            $startTime = Carbon::parse($strategy->sell_start_time);
-            $endTime = Carbon::parse($strategy->sell_end_time);
-            if ($endTime->lt($startTime)) {
-                $endTime->addDay();
+        // Sell Window Logic
+        $hasActiveSellPlan = !empty($finalSellPlan['sell_plan']);
+        $isWithinSellWindow = false;
+        foreach ($batteryStrategies as $strategy) {
+            if ($strategy->sell_start_time && $strategy->sell_end_time) {
+                $startTime = Carbon::parse($strategy->sell_start_time);
+                $endTime = Carbon::parse($strategy->sell_end_time);
+                if ($endTime->lt($startTime)) {
+                    $endTime->addDay();
+                }
+                if ($now->between($startTime, $endTime)) {
+                    $isWithinSellWindow = true;
+                    break;
+                }
             }
-            if ($now->between($startTime, $endTime)) {
-                $isWithinSellWindow = true;
-                break;
+        }
+
+        // Buy Window Logic
+        $eveningPeakStrategy = $batteryStrategies->firstWhere('name', 'Evening Peak');
+        $isWithinBuyWindow = false;
+        if ($eveningPeakStrategy && $eveningPeakStrategy->buy_start_time && $eveningPeakStrategy->buy_end_time) {
+            $buyStartTime = Carbon::parse($eveningPeakStrategy->buy_start_time);
+            $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
+            if ($buyEndTime->lt($buyStartTime)) {
+                $buyEndTime->addDay();
             }
+            $isWithinBuyWindow = $now->between($buyStartTime, $buyEndTime);
+        }
+
+        $hasActiveBuyPlan = !empty($buyStrategy['everyday_buy_plan']['buy_plan'])
+            || !empty($buyStrategy['essential_buy_plan']['buy_plan'])
+            || !empty($buyStrategy['target_buy_plan']['buy_plan']);
+
+        // Determine Status
+        $newStatus = 'self_sufficient'; // Default status
+
+        if ($hasActiveSellPlan && $isWithinSellWindow) {
+            $newStatus = 'prioritize_selling';
+        } elseif ($hasActiveBuyPlan && $isWithinBuyWindow) {
+            $newStatus = 'prioritize_charging';
+        }
+
+        if ($batterySettings->status !== $newStatus) {
+            $batterySettings->status = $newStatus;
         }
     }
 
-    // Buy Window Logic
-    $eveningPeakStrategy = $batteryStrategies->firstWhere('name', 'Evening Peak');
-    $isWithinBuyWindow = false;
-    if ($eveningPeakStrategy && $eveningPeakStrategy->buy_start_time && $eveningPeakStrategy->buy_end_time) {
-        $buyStartTime = Carbon::parse($eveningPeakStrategy->buy_start_time);
-        $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
-        if ($buyEndTime->lt($buyStartTime)) {
-            $buyEndTime->addDay();
-        }
-        $isWithinBuyWindow = $now->between($buyStartTime, $buyEndTime);
-    }
-
-    $hasActiveBuyPlan = !empty($buyStrategy['everyday_buy_plan']['buy_plan'])
-                         || !empty($buyStrategy['essential_buy_plan']['buy_plan'])
-                         || !empty($buyStrategy['target_buy_plan']['buy_plan']);
-
-    // Determine Status
-    $newStatus = 'self_sufficient'; // Default status
-
-    if ($hasActiveSellPlan && $isWithinSellWindow) {
-        // First priority: Selling
-        $newStatus = 'prioritize_selling';
-    } elseif ($hasActiveBuyPlan && $isWithinBuyWindow) {
-        // Second priority: Charging
-        $newStatus = 'prioritize_charging';
-    }
-
-    // Update Database if Changed
-    if ($batterySettings->status !== $newStatus) {
-        $batterySettings->status = $newStatus;
-        $batterySettings->save();
-    }
-}
-
-    private function cacheResults($soc,array $buyStrategy, array $sellPlans): void
+    private function cacheResults($soc, array $buyStrategy, array $sellPlans, float $lowestCurrentSellPrice): void
     {
         Cache::put('soc', $soc, now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('remaining_solar_generation_today', $buyStrategy ['future_generation_kwh'], now()->addMinutes(self::CACHE_MINUTES));
-        Cache::put('forecast_soc', $soc+$buyStrategy ['future_generation_percent'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('remaining_solar_generation_today', $buyStrategy['future_generation_kwh'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('forecast_soc', $soc + $buyStrategy['future_generation_percent'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('everyday_buy_plan', $buyStrategy['everyday_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('essential_buy_plan', $buyStrategy['essential_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('target_buy_plan', $buyStrategy['target_buy_plan'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('kwh_to_buy_essential', $buyStrategy['kwh_to_buy_essential'], now()->addMinutes(self::CACHE_MINUTES));
         Cache::put('kwh_to_buy_target', $buyStrategy['kwh_to_buy_target'], now()->addMinutes(self::CACHE_MINUTES));
+        Cache::put('lowest_current_sell_price', $lowestCurrentSellPrice, now()->addMinutes(self::CACHE_MINUTES));
+
         $keyMap = [
             'Evening Peak' => 'evening_sell_strategy',
             'Flexible Evening' => 'late_evening_sell_strategy',
@@ -259,10 +266,6 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         $today = $now->toDateString();
         $currentHour = $now->hour;
 
-        if (!isset($batterySettings->longterm_target_electric_price_cents)) {
-            $batterySettings = BatterySetting::latest()->first();
-        }
-
         $eveningPeakStrategy = BatteryStrategy::where('name', 'Evening Peak')->first();
         $buyStartTime = Carbon::parse($eveningPeakStrategy->buy_start_time);
         $buyEndTime = Carbon::parse($eveningPeakStrategy->buy_end_time);
@@ -273,7 +276,6 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         $everydayBuyPlan = ['buy_plan' => []];
         $essentialBuyPlan = ['buy_plan' => []];
         $targetBuyPlan = ['buy_plan' => []];
-
         $futureGenerationKwh = 0;
         $futureGenerationPercent = 0;
         $kwhToBuyEssential = 0;
@@ -294,12 +296,12 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
 
         $gridConsumption = round($gridConsumption, 2);
 
-        if ($gridConsumption < 11) {
+        if ($gridConsumption < 10) {
             $everydayBuyPlan = $amberService->calculateOptimalCharging(
-                11 - $gridConsumption,
+                10 - $gridConsumption,
                 $batterySettings->longterm_target_electric_price_cents,
-                $now, 
-                $now->copy()->addHours(24), 
+                $buyStartTime,
+                $buyEndTime,
                 $allocatedSlots
             );
             if (isset($everydayBuyPlan['buy_plan'])) {
@@ -309,58 +311,47 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
             }
         }
 
-        if (!$currentYield) {
-            return [
-                'everyday_buy_plan' => $everydayBuyPlan,
-                'essential_buy_plan' => $essentialBuyPlan,
-                'target_buy_plan' => $targetBuyPlan,
-                'future_generation_kwh' => $futureGenerationKwh,
-                'future_generation_percent' => $futureGenerationPercent,
-                'kwh_to_buy_essential' => $kwhToBuyEssential,
-                'kwh_to_buy_target' => $kwhToBuyTarget,
+        if ($currentYield) {
+            $currentYieldKwh = $currentYield->kwh;
+            $solarProduction = [
+                8 => 2.78, 9 => 5.5, 10 => 9.34, 11 => 14, 12 => 19.23,
+                13 => 24.39, 14 => 28.9, 15 => 33.7, 16 => 38.2, 17 => 42,
+                18 => 44.5, 19 => 46.00,
             ];
-        }
 
-        $currentYieldKwh = $currentYield->kwh;
+            if (isset($solarProduction[$currentHour]) && $solarProduction[$currentHour] > 0) {
+                $targetKwh = end($solarProduction);
+                $futureGenerationKwh = (($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh) - $currentYieldKwh;
+                $futureGenerationPercent = round($futureGenerationKwh / self::SOC_TO_KWH_FACTOR);
+                $socInKwh = $soc * self::SOC_TO_KWH_FACTOR;
+                $essentialKwhTarget = 20;
 
-        $solarProduction = [
-            8 => 2.78, 9 => 5.5, 10 => 9.34, 11 => 14, 12 => 19.23,
-            13 => 24.39, 14 => 28.9, 15 => 33.7, 16 => 38.2, 17 => 42,
-            18 => 44.5, 19 => 46.00,
-        ];
-
-        if (isset($solarProduction[$currentHour]) && $solarProduction[$currentHour] > 0) {
-            $targetKwh = end($solarProduction);
-            $futureGenerationKwh = (($currentYieldKwh / $solarProduction[$currentHour]) * $targetKwh) - $currentYieldKwh;
-            $futureGenerationPercent = round($futureGenerationKwh / self::SOC_TO_KWH_FACTOR);
-            $socInKwh = $soc * self::SOC_TO_KWH_FACTOR;
-            $essentialKwhTarget = 20;
-
-            $kwhToBuyEssential = max(0, $essentialKwhTarget - $futureGenerationKwh - $socInKwh);
-            if ($kwhToBuyEssential > 0) {
-                $essentialBuyPlan = $amberService->calculateOptimalCharging(
-                    $kwhToBuyEssential,
-                    $batterySettings->longterm_target_electric_price_cents,
-                    $now, 
-                    $now->copy()->addHours(24), 
-                    $allocatedSlots
-                );
-                if (isset($essentialBuyPlan['buy_plan'])) {
-                    foreach ($essentialBuyPlan['buy_plan'] as $slot) {
-                        $allocatedSlots[] = $slot;
+                $kwhToBuyEssential = max(0, $essentialKwhTarget - $futureGenerationKwh - $socInKwh);
+                if ($kwhToBuyEssential > 0) {
+                    $essentialBuyPlan = $amberService->calculateOptimalCharging(
+                        $kwhToBuyEssential,
+                        $batterySettings->longterm_target_electric_price_cents,
+                        $buyStartTime,
+                        $buyEndTime,
+                        $allocatedSlots
+                    );
+                    if (isset($essentialBuyPlan['buy_plan'])) {
+                        foreach ($essentialBuyPlan['buy_plan'] as $slot) {
+                            $allocatedSlots[] = $slot;
+                        }
                     }
                 }
-            }
 
-            $kwhToBuyTarget = max(0, $targetKwh - $futureGenerationKwh - $socInKwh - $kwhToBuyEssential);
-            if ($kwhToBuyTarget > 0) {
-                $targetBuyPlan = $amberService->calculateOptimalCharging(
-                    $kwhToBuyTarget,
-                    $batterySettings->longterm_target_electric_price_cents,
-                    $now, 
-                    $now->copy()->addHours(24), 
-                    $allocatedSlots
-                );
+                $kwhToBuyTarget = max(0, $targetKwh - $futureGenerationKwh - $socInKwh - $kwhToBuyEssential);
+                if ($kwhToBuyTarget > 0) {
+                    $targetBuyPlan = $amberService->calculateOptimalCharging(
+                        $kwhToBuyTarget,
+                        $batterySettings->longterm_target_electric_price_cents,
+                        $buyStartTime,
+                        $buyEndTime,
+                        $allocatedSlots
+                    );
+                }
             }
         }
 
@@ -375,24 +366,11 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         ];
     }
 
-
-    /**
-     * Get active battery strategies.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection
-     */
     private function getActiveBatteryStrategies()
     {
         return BatteryStrategy::where('is_active', true)->orderBy('id', 'asc')->get();
     }
 
-    /**
-     * Calculate the amount of kWh to sell based on the current state of charge (SoC) and the given strategy.
-     *
-     * @param float $soc
-     * @param \App\Models\BatteryStrategy $strategy
-     * @return float
-     */
     private function calculateKwhToSell($soc, $strategy)
     {
         if ($soc > $strategy->soc_lower_bound) {
@@ -402,13 +380,6 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         return 0;
     }
 
-    /**
-     * Get the lowest current sell price from the sell plan.
-     *
-     * @param array|null $sellPlan
-     * @param int $currentHour
-     * @return float
-     */
     private function getLowestCurrentSellPrice($sellPlan, $currentHour)
     {
         if (!$sellPlan || !isset($sellPlan['sell_plan'])) {
@@ -428,16 +399,6 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         return $lowestPrice;
     }
 
-    /**
-     * Update the target price in the battery settings.
-     *
-     * @param \App\BatterySetting $batterySettings
-     * @param float $lowestCurrentSellPrice
-     * @param float $soc
-     * @param int $currentHour
-     * @param \Illuminate\Support\Collection $strategies
-     * @return void
-     */
     private function updateTargetPrice($batterySettings, $lowestCurrentSellPrice, $soc, $currentHour, $strategies)
     {
         if (!$batterySettings) return;
@@ -446,38 +407,36 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
         $flexibleEveningStrategy = $strategies->firstWhere('name', 'Flexible Evening');
         $overnightStrategy = $strategies->firstWhere('name', 'Overnight');
 
-        // Get the end hour for each strategy, defaulting to -1 if the strategy is not active
-        $eveningPeakEndHour = $eveningPeakStrategy ? Carbon::parse($eveningPeakStrategy->sell_end_time)->hour : -1;
-        $lateEveningEndHour = $flexibleEveningStrategy ? Carbon::parse($flexibleEveningStrategy->sell_end_time)->hour : -1;
-        $lateNightEndHour = $overnightStrategy ? Carbon::parse($overnightStrategy->sell_end_time)->hour : -1;
-        
-        // Get the lower SoC bound for each strategy, defaulting to 101 (unachievable) if not active
-        $socHigh = $eveningPeakStrategy ? $eveningPeakStrategy->soc_lower_bound : 101;
-        $socMedium = $flexibleEveningStrategy ? $flexibleEveningStrategy->soc_lower_bound : 101;
-        $socLow = $overnightStrategy ? $overnightStrategy->soc_lower_bound : 101;
+        if (!$eveningPeakStrategy || !$flexibleEveningStrategy || !$overnightStrategy) {
+            // One or more strategies are not found, so we can't proceed.
+            // Log this event for debugging purposes.
+            Log::warning('updateTargetPrice: One or more battery strategies are missing.');
+            return;
+        }
 
-        // Determine the target price based on the current time and SoC
+        $eveningPeakEndHour = Carbon::parse($eveningPeakStrategy->sell_end_time)->hour;
+        $lateEveningEndHour = Carbon::parse($flexibleEveningStrategy->sell_end_time)->hour;
+        $lateNightEndHour = Carbon::parse($overnightStrategy->sell_end_time)->hour;
+
+        $socHigh = $eveningPeakStrategy->soc_lower_bound;
+        $socMedium = $flexibleEveningStrategy->soc_lower_bound;
+        $socLow = $overnightStrategy->soc_lower_bound;
+
         $newTargetPrice = null;
 
         if ($currentHour >= $eveningPeakEndHour && $currentHour < $lateEveningEndHour && $soc > $socHigh) {
-            // After Evening Peak but before Late Evening ends, if SoC is still high, reset to long-term.
             $newTargetPrice = $batterySettings->longterm_target_price_cents;
         } elseif ($currentHour >= $lateEveningEndHour && $soc > $socMedium) {
-            // After Late Evening, if SoC is still medium, reset to long-term.
             $newTargetPrice = $batterySettings->longterm_target_price_cents;
         } elseif ($currentHour >= $lateNightEndHour && $currentHour < 3 && $soc > $socLow) {
-            // After Overnight, if SoC is still low, reset to long-term.
             $newTargetPrice = $batterySettings->longterm_target_price_cents;
         } elseif ($lowestCurrentSellPrice > $batterySettings->longterm_target_price_cents) {
-            // If there's a profitable upcoming price, set it as the target.
             $newTargetPrice = $lowestCurrentSellPrice;
         }
 
-        // Only update the database if the target price has changed
         if ($newTargetPrice !== null && $newTargetPrice != $batterySettings->target_price_cents) {
-            $newTargetPrice *= 0.9;
+            $newTargetPrice = round($newTargetPrice * 0.9, 2);
             $batterySettings->target_price_cents = $newTargetPrice;
-            $batterySettings->save();
             Cache::forget('offer_price');
             Cache::forget('sell_score');
             Cache::forget('threshold');
@@ -488,37 +447,30 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
 
     private function updateTargetElectricPrice(BatterySetting $batterySettings, ?array ...$buyPlans): void
     {
-        $lowestBuyPrice = PHP_INT_MAX;
+        $highestBuyPrice = 0;
 
         foreach ($buyPlans as $plan) {
-            if (!empty($plan) && !empty($plan['buy_plan'])) {
+            if (is_array($plan) && isset($plan['buy_plan']) && is_array($plan['buy_plan'])) {
                 foreach ($plan['buy_plan'] as $slot) {
-                    if ($slot['price'] < $lowestBuyPrice) {
-                        $lowestBuyPrice = $slot['price'];
+                    if (isset($slot['price']) && $slot['price'] > $highestBuyPrice) {
+                        $highestBuyPrice = $slot['price'];
                     }
                 }
             }
         }
 
-        if ($lowestBuyPrice < $batterySettings->longterm_target_electric_price_cents) {
-            $batterySettings->target_electric_price_cents = $lowestBuyPrice;
+        if ($highestBuyPrice > 0 && $highestBuyPrice < $batterySettings->longterm_target_electric_price_cents) {
+            $batterySettings->target_electric_price_cents = round($highestBuyPrice, 2);
         }
     }
 
-    /**
-     * Merges two or more sell plans into a single plan.
-     *
-     * @param array|null ...$plans
-     * @return array|null
-     */
     private function mergeSellPlans(...$plans): ?array
     {
-        $nonNullPlans = array_filter($plans, function($plan) {
+        $nonNullPlans = array_filter($plans, function ($plan) {
             return !empty($plan) && empty($plan['error']) && !empty($plan['sell_plan']);
         });
 
         if (empty($nonNullPlans)) {
-            // Return one of the original plans if it contains a message (e.g., "no profitable slots")
             foreach ($plans as $plan) {
                 if (!empty($plan['message'])) {
                     return $plan;
@@ -562,7 +514,6 @@ private function updateBatteryStatus(BatterySetting $batterySettings, ?array $fi
             $mergedPlan['lowest_sell_price'] = 0;
         }
 
-        // Sort the final combined plan by time
         usort($mergedPlan['sell_plan'], function ($a, $b) {
             return strcmp($a['time'], $b['time']);
         });
