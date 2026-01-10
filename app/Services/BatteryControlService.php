@@ -61,6 +61,10 @@ class BatteryControlService
 
     private function handleForcedDischarge($battery, $prices, $eveningPeakStrategy, $overnightStrategy)
     {
+        if (!isset($prices['solarPrice']) || !is_numeric($prices['solarPrice'])) {
+            return;
+        }
+
         $currentSolarPrice = $prices['solarPrice'];
         $forecastPrice = $battery->target_price_cents;
 
@@ -72,6 +76,7 @@ class BatteryControlService
                 break;
             }
         }
+
         if ($isSellWindow) {
             // Manage historical prices
             $solarPrices = Cache::get('solar_prices', []);
@@ -168,7 +173,11 @@ class BatteryControlService
     {
         $currentElectricPrice = $prices['electricityPrice'];
         $targetElectricPrice = $battery->target_electric_price_cents;
-        $shouldForceCharge = $currentElectricPrice < $targetElectricPrice && $battery->status !== 'self_sufficient';
+
+        $shouldForceCharge = false;
+        if (is_numeric($currentElectricPrice)) {
+            $shouldForceCharge = $currentElectricPrice < $targetElectricPrice && $battery->status !== 'self_sufficient';
+        }
 
         if ($battery->forced_charge === $shouldForceCharge) {
             return;
