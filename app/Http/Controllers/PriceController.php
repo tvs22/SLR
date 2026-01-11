@@ -296,9 +296,9 @@ class PriceController extends Controller
 
         $gridConsumption = round($gridConsumption, 2);
 
-        if ($gridConsumption < 18) {
+        if ($gridConsumption < 20) {
             $everydayBuyPlan = $amberService->calculateOptimalCharging(
-                18 - $gridConsumption,
+                20 - $gridConsumption,
                 $batterySettings->longterm_target_electric_price_cents,
                 $buyStartTime,
                 $buyEndTime,
